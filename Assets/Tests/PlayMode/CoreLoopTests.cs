@@ -177,6 +177,33 @@ namespace CargoStack.Tests
                 "부딪힌 충격이 시점을 돌렸다. 플레이어 Rigidbody 의 회전이 잠겨 있어야 한다");
         }
 
+        /// <summary>
+        /// 사거리가 짧으면 반대편에 놓으려고 트럭을 빙 돌아가야 한다. 그게 적재의 재미가 아니다.
+        /// 트럭 한쪽에 선 채로 짐칸 건너편 구석까지는 닿아야 한다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 트럭_옆에_선_채로_짐칸_건너편까지_손이_닿는다()
+        {
+            Cargo target = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID)[0];
+
+            // 짐칸 건너편(+z) 구석에 상자를 둔다.
+            MoveCargo(target, new Vector3(0f, 0.7f, 0.85f));
+
+            // 플레이어는 반대쪽(-z) 바퀴 바깥 땅에 선다.
+            player.SetWorldPose(
+                bedAnchor.TransformPoint(new Vector3(0f, -0.975f, -2.1f)),
+                Quaternion.identity,
+                Vector3.zero);
+
+            yield return new WaitForFixedUpdate();
+
+            float reach = Vector3.Distance(player.transform.position, target.Body.worldCenterOfMass);
+            Debug.Log($"[CargoStack] 짐칸 건너편까지 거리: {reach:0.00}m");
+
+            Assert.IsTrue(interactor.TryPickUp(target),
+                $"트럭 옆에 섰는데 짐칸 건너편 상자({reach:0.00}m)에 손이 닿지 않는다");
+        }
+
         [UnityTest]
         public IEnumerator 짐칸에_실은_상자는_마찰만으로_목적지까지_실려_간다()
         {

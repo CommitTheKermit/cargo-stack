@@ -43,6 +43,18 @@ namespace CargoStack.EditorTools
         public const int CargoCount = 6;
 
         /// <summary>
+        /// 화물을 집을 수 있는 거리. 플레이어 발밑에서 화물 무게중심까지 잰다.
+        ///
+        /// 트럭 옆(짐칸 중심에서 2.1m 밖)에 서서 짐칸 건너편 구석까지 닿으려면 3.4m 가 필요하다.
+        /// 원본 스파이크의 2.1m 로는 반대편에 놓으려고 트럭을 빙 돌아가야 했다.
+        /// 조준은 화면 중앙 레이캐스트가 하므로, 이 값을 늘려도 엉뚱한 상자가 집히지는 않는다.
+        /// </summary>
+        private const float CargoReach = 3.8f;
+
+        /// <summary>미리보기를 띄울 면을 찾는 거리. 집을 수 있는 거리보다 너무 멀면 되찾지 못할 곳에 놓게 된다.</summary>
+        private const float CargoPlacementReach = 6f;
+
+        /// <summary>
         /// 도로 중심선 제어점. 위에서 보면 일직선이고, 옆에서 보면 오르막과 내리막이 굽이친다.
         /// 곡선이 이 점들을 모두 지나가므로 마루와 골짜기가 각지지 않고 둥글게 이어진다.
         ///
@@ -503,6 +515,14 @@ namespace CargoStack.EditorTools
 
             PlayerCargoInteractor interactor = player.AddComponent<PlayerCargoInteractor>();
             interactor.Configure(carryAnchor, firstPersonCamera);
+
+            // 사거리는 원본 스파이크의 기본값을 쓰지 않고 여기서 덮어쓴다.
+            // 복사해 온 파일을 그대로 두어야 출처 표기가 사실로 남고, 튜닝 값은 레벨 데이터와 함께 모인다.
+            using (var wiring = new Wiring(interactor))
+            {
+                wiring.Num("interactionRadius", CargoReach)
+                    .Num("placementRange", CargoPlacementReach);
+            }
 
             firstPersonCamera.GetComponent<FirstPersonCamera>().Configure(eye, true);
             return player;
