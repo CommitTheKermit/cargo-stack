@@ -24,6 +24,7 @@ namespace CargoStack.EditorTools
         private const string ScenePath = SceneFolder + "/Prototype.unity";
         private const string MaterialFolder = "Assets/Materials";
         private const string MeshFolder = "Assets/Meshes";
+        private const string CargoArtFolder = "Assets/Art/Cargo";
 
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
@@ -93,8 +94,6 @@ namespace CargoStack.EditorTools
             Material truckMaterial = EnsureColorMaterial("Truck", new Color(0.26f, 0.48f, 0.62f));
             Material bedMaterial = EnsureColorMaterial("Bed", new Color(0.47f, 0.5f, 0.52f));
             Material wheelMaterial = EnsureColorMaterial("Wheel", new Color(0.09f, 0.09f, 0.1f));
-            Material cargoMaterialA = EnsureColorMaterial("CargoA", new Color(0.78f, 0.5f, 0.21f));
-            Material cargoMaterialB = EnsureColorMaterial("CargoB", new Color(0.63f, 0.37f, 0.24f));
             Material playerMaterial = EnsureColorMaterial("Player", new Color(0.32f, 0.7f, 0.42f));
 
             PhysicsMaterial bedPhysics = EnsurePhysicsMaterial("BedSurface", 0.55f, 0.65f);
@@ -127,7 +126,7 @@ namespace CargoStack.EditorTools
             // 아래 짐·플레이어·카메라가 모두 이 자세를 기준으로 자리를 잡으므로 순서를 지켜야 한다.
             mover.SnapToStart();
 
-            List<Cargo> cargo = BuildCargo(truck.transform, cargoMaterialA, cargoMaterialB, cargoPhysics);
+            List<Cargo> cargo = BuildCargo(truck.transform, cargoPhysics);
 
             Camera firstPersonCamera = BuildFirstPersonCamera(out Transform carryAnchor);
             GameObject player = BuildPlayer(truck.transform, firstPersonCamera, carryAnchor, playerMaterial);
@@ -408,53 +407,163 @@ namespace CargoStack.EditorTools
         /// 짐은 트럭 옆 바닥에 널어 둔다. 플레이어가 걸어가 하나씩 실어야 한다.
         /// 자리는 트럭 기준 상대 좌표로 잡는다. 출발선이 경로를 따라 움직여도 같이 따라오게 하기 위함이다.
         /// </summary>
-        private static List<Cargo> BuildCargo(
-            Transform truck, Material materialA, Material materialB, PhysicsMaterial physics)
+        private static List<Cargo> BuildCargo(Transform truck, PhysicsMaterial physics)
         {
             var cargoRoot = new GameObject("Cargo").transform;
-            // 크기를 조금씩 다르게 해 쌓는 재미를 만들되, 가로·세로는 1.0 을 넘기지 않는다.
-            // 짐칸 내부가 3.22 x 2.04 라서 그래야 3x2 한 층이 딱 들어간다.
-            var sizes = new[]
+            // 각 모델은 보이는 FBX와 보이지 않는 BoxCollider 프록시를 분리한다. 프록시는
+            // PlayerCargoInteractor 의 배치 계산 및 트럭 위 물리를 안정적으로 유지한다.
+            var visuals = new[]
             {
-                new Vector3(0.9f, 0.9f, 0.9f),
-                new Vector3(1f, 0.7f, 0.85f),
-                new Vector3(0.8f, 1.1f, 0.8f),
-                new Vector3(0.95f, 0.6f, 0.95f),
-                new Vector3(0.75f, 0.75f, 0.75f),
-                new Vector3(0.9f, 0.9f, 0.9f),
+                new CargoVisualDefinition("CardboardBox", new Vector3(0.9f, 0.85f, 0.9f), 18f),
+                new CargoVisualDefinition("BlueBarrel", new Vector3(0.78f, 0.95f, 0.78f), 22f),
+                new CargoVisualDefinition("MarbleBust", new Vector3(0.8f, 1.05f, 0.8f), 28f),
+                new CargoVisualDefinition("FloorLamp", new Vector3(0.7f, 1.15f, 0.7f), 16f),
+                new CargoVisualDefinition("CardboardBox", new Vector3(0.82f, 0.78f, 0.82f), 20f),
+                new CargoVisualDefinition("BlueBarrel", new Vector3(0.72f, 0.88f, 0.72f), 24f),
             };
 
             var cargo = new List<Cargo>(CargoCount);
 
             for (int index = 0; index < CargoCount; index++)
             {
-                Vector3 size = sizes[index % sizes.Length];
+                CargoVisualDefinition definition = visuals[index % visuals.Length];
+                var item = new GameObject($"Cargo_{index + 1:00}");
+                item.transform.SetParent(cargoRoot, false);
+                Vector3 proxySize = AddImportedCargoVisual(item.transform, definition);
 
                 // 트럭 옆 인도. 폭 13m 도로를 벗어나지 않게 z 를 -4.7m 안쪽으로 묶는다.
                 var localSpot = new Vector3(
                     -2.6f + index % 3 * 1.5f,
-                    size.y * 0.5f + 0.02f - RideHeight,
+                    proxySize.y * 0.5f + 0.02f - RideHeight,
                     -3f - index / 3 * 1.2f);
 
-                GameObject box = GameObject.CreatePrimitive(PrimitiveType.Cube);
-                box.name = $"Cargo_{index + 1:00}";
-                box.transform.SetParent(cargoRoot, false);
-                box.transform.position = truck.TransformPoint(localSpot);
-                box.transform.localScale = size;
-                box.GetComponent<Renderer>().sharedMaterial = index % 2 == 0 ? materialA : materialB;
-                box.GetComponent<BoxCollider>().sharedMaterial = physics;
+                item.transform.position = truck.TransformPoint(localSpot);
+                BoxCollider box = item.AddComponent<BoxCollider>();
+                box.size = proxySize;
+                box.sharedMaterial = physics;
 
-                Rigidbody body = box.AddComponent<Rigidbody>();
-                body.mass = 18f + index * 2f;
+                Rigidbody body = item.AddComponent<Rigidbody>();
+                body.mass = definition.Mass;
                 body.linearDamping = 0.05f;
                 body.angularDamping = 0.15f;
                 body.interpolation = RigidbodyInterpolation.Interpolate;
                 body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
-                cargo.Add(box.AddComponent<Cargo>());
+                cargo.Add(item.AddComponent<Cargo>());
             }
 
             return cargo;
+        }
+
+        private static Vector3 AddImportedCargoVisual(Transform cargoRoot, CargoVisualDefinition definition)
+        {
+            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(definition.ModelPath)
+                ?? throw new InvalidOperationException($"화물 모델을 찾지 못했다: {definition.ModelPath}");
+            Material material = EnsureCargoMaterial(definition);
+            var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
+            visual.name = $"ImportedVisual_{definition.Name}";
+            visual.transform.SetParent(cargoRoot, false);
+            visual.transform.localPosition = Vector3.zero;
+            // The supplied Meshy FBX files use Z-up. Turn them upright for Unity's Y-up world
+            // before measuring the renderer and creating its matching physics proxy.
+            visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            Vector3 importedScale = visual.transform.localScale;
+
+            foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
+            {
+                Object.DestroyImmediate(collider);
+            }
+
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.sharedMaterial = material;
+            }
+
+            Bounds originalBounds = GetRendererBounds(visual);
+            float scale = Mathf.Min(
+                definition.MaximumSize.x / originalBounds.size.x,
+                definition.MaximumSize.y / originalBounds.size.y,
+                definition.MaximumSize.z / originalBounds.size.z);
+            // Meshy FBX roots carry their source-unit conversion in localScale (typically
+            // 100). Preserve it while fitting the visible renderer into the proxy bounds.
+            visual.transform.localScale = importedScale * scale;
+
+            Bounds scaledBounds = GetRendererBounds(visual);
+            visual.transform.localPosition = -scaledBounds.center;
+            return scaledBounds.size * 1.05f;
+        }
+
+        private static Bounds GetRendererBounds(GameObject target)
+        {
+            Renderer[] renderers = target.GetComponentsInChildren<Renderer>(true);
+            if (renderers.Length == 0)
+            {
+                throw new InvalidOperationException($"화물 모델에 Renderer 가 없다: {target.name}");
+            }
+
+            Bounds bounds = renderers[0].bounds;
+            for (int i = 1; i < renderers.Length; i++)
+            {
+                bounds.Encapsulate(renderers[i].bounds);
+            }
+
+            if (bounds.size.x <= 1e-4f || bounds.size.y <= 1e-4f || bounds.size.z <= 1e-4f)
+            {
+                throw new InvalidOperationException($"화물 모델의 유효한 크기를 읽지 못했다: {target.name}");
+            }
+
+            return bounds;
+        }
+
+        private static Material EnsureCargoMaterial(CargoVisualDefinition definition)
+        {
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(definition.MaterialPath);
+            if (material == null)
+            {
+                material = new Material(Shader.Find("Standard")) { name = definition.Name + "Material" };
+                AssetDatabase.CreateAsset(material, definition.MaterialPath);
+            }
+
+            material.SetTexture("_MainTex", LoadCargoTexture(definition, "Albedo"));
+            material.SetTexture("_MetallicGlossMap", LoadCargoTexture(definition, "Metallic"));
+            material.SetTexture("_BumpMap", LoadCargoTexture(definition, "Normal", true));
+            material.SetFloat("_Metallic", 1f);
+            material.SetFloat("_Glossiness", 0.25f);
+            material.EnableKeyword("_METALLICGLOSSMAP");
+            material.EnableKeyword("_NORMALMAP");
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Texture2D LoadCargoTexture(CargoVisualDefinition definition, string textureName, bool normalMap = false)
+        {
+            string path = $"{definition.Folder}/{textureName}.png";
+            if (normalMap && AssetImporter.GetAtPath(path) is TextureImporter importer
+                && importer.textureType != TextureImporterType.NormalMap)
+            {
+                importer.textureType = TextureImporterType.NormalMap;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Texture2D>(path)
+                ?? throw new InvalidOperationException($"화물 텍스처를 찾지 못했다: {path}");
+        }
+
+        private sealed class CargoVisualDefinition
+        {
+            public string Name { get; }
+            public Vector3 MaximumSize { get; }
+            public float Mass { get; }
+            public string Folder => $"{CargoArtFolder}/{Name}";
+            public string ModelPath => $"{Folder}/{Name}.fbx";
+            public string MaterialPath => $"{Folder}/{Name}Material.mat";
+
+            public CargoVisualDefinition(string name, Vector3 maximumSize, float mass)
+            {
+                Name = name;
+                MaximumSize = maximumSize;
+                Mass = mass;
+            }
         }
 
         private static Camera BuildFirstPersonCamera(out Transform carryAnchor)

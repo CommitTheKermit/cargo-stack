@@ -88,6 +88,40 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 모든_화물은_루트_큐브가_아닌_가져온_모델을_보인다()
+        {
+            Cargo[] cargo = GetCargo();
+
+            foreach (Cargo item in cargo)
+            {
+                Assert.IsNull(item.GetComponent<Renderer>(), $"{item.name} 루트에 원시 도형 Renderer 가 남아 있다");
+
+                Transform visual = null;
+                foreach (Transform child in item.transform)
+                {
+                    if (child.name.StartsWith("ImportedVisual_"))
+                    {
+                        visual = child;
+                        break;
+                    }
+                }
+
+                Assert.NotNull(visual, $"{item.name} 에 가져온 모델 시각물이 없다");
+                Renderer[] renderers = visual.GetComponentsInChildren<Renderer>(true);
+                Assert.IsNotEmpty(renderers, $"{item.name} 가져온 모델에 Renderer 가 없다");
+
+                foreach (Renderer renderer in renderers)
+                {
+                    Assert.NotNull(renderer.sharedMaterial, $"{item.name} 모델에 재질이 할당되지 않았다");
+                    Assert.That(renderer.sharedMaterial.name, Does.EndWith("Material"),
+                        $"{item.name} 모델이 cargo art 재질을 사용하지 않는다");
+                }
+            }
+
+            yield break;
+        }
+
+        [UnityTest]
         public IEnumerator 미리보기는_Q를_누른_시간만큼_반시계로_돌고_그_방향으로_놓인다()
         {
             // 씬과 플레이어 콜라이더가 카메라 광선을 가로채지 않도록, 별도 공간에서 검증한다.
