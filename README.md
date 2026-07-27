@@ -48,6 +48,29 @@ Unity Hub에서 저장소 루트를 프로젝트로 추가하고 위 버전으�
 2. 주행 관전이 긴장되는가? (결과가 뻔하면 실패)
 3. 실패했을 때 다시 하고 싶은가?
 
+### 현재 난이도 기준값
+
+PlayMode 테스트가 남기는 로그 기준이다. 마찰이나 속도 프로필을 바꾸면 이 값이 움직인다.
+
+| 배치 | 생존 |
+|---|---|
+| 나란히 (무게중심 낮게) | 3 / 3 |
+| 높이 쌓기 (탑) | 2 / 3 |
+
+배치가 결과를 바꾼다는 전제는 성립한다. 다만 "나란히"가 항상 안전하므로,
+안전한 배치에도 긴장이 생기게 하려면 경로를 험하게 하거나 마찰을 낮춰야 한다.
+
+## 테스트
+
+```bash
+/Applications/Unity/Hub/Editor/6000.5.4f1/Unity.app/Contents/MacOS/Unity \
+  -batchmode -projectPath . -runTests -testPlatform PlayMode \
+  -testResults /tmp/cargo-stack-tests.xml -logFile /tmp/cargo-stack-tests.log
+```
+
+`Assets/Tests/PlayMode/CoreLoopTests.cs`가 "마찰만으로 짐이 실려 간다"는 전제를 회귀 테스트로 고정한다.
+이 테스트가 깨지면 물리 파라미터가 게임을 성립하지 않게 바꾼 것이다.
+
 ## 구조
 
 ```
