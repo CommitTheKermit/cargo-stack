@@ -7,14 +7,20 @@ namespace CargoStack
     /// <summary>
     /// 짐이 짐칸 위에 남아 있는지 감시한다(기획서 4.2).
     /// 트리거 콜백 호출 순서에 의존하지 않도록, 짐칸 로컬 좌표 기준 범위 검사로 판정한다.
-    /// 적재 단계에는 짐이 아직 짐칸 밖에 있으므로 주행이 시작된 뒤부터 감시한다.
+    /// 적재 단계에는 짐이 아직 바닥에 널려 있으므로 주행이 시작된 뒤부터 감시한다.
+    ///
+    /// 위아래 여유를 따로 둔다. 위로는 높이 쌓을 수 있어야 하고,
+    /// 아래로는 짐칸 바닥을 조금만 벗어나도 떨어진 것으로 봐야 하기 때문이다.
     /// </summary>
     public class CargoTracker : MonoBehaviour
     {
         [SerializeField] private Transform bedAnchor;
 
-        [Tooltip("이 범위를 벗어나면 떨어진 것으로 본다. 짐칸 로컬 좌표 기준.")]
-        [SerializeField] private Vector3 keepHalfExtents = new Vector3(2.6f, 4f, 2f);
+        [Tooltip("짐칸 로컬 좌표 기준 허용 범위의 최소 모서리. y 는 바닥에 떨어진 짐과 구분될 만큼 얕아야 한다.")]
+        [SerializeField] private Vector3 keepMin = new Vector3(-2.2f, -0.35f, -1.6f);
+
+        [Tooltip("짐칸 로컬 좌표 기준 허용 범위의 최대 모서리. y 는 쌓을 수 있는 높이다.")]
+        [SerializeField] private Vector3 keepMax = new Vector3(2.2f, 4f, 1.6f);
 
         [SerializeField] private List<Cargo> tracked = new List<Cargo>();
 
@@ -61,9 +67,9 @@ namespace CargoStack
         {
             Vector3 local = bedAnchor.InverseTransformPoint(cargo.transform.position);
 
-            return Mathf.Abs(local.x) <= keepHalfExtents.x
-                && Mathf.Abs(local.y) <= keepHalfExtents.y
-                && Mathf.Abs(local.z) <= keepHalfExtents.z;
+            return local.x >= keepMin.x && local.x <= keepMax.x
+                && local.y >= keepMin.y && local.y <= keepMax.y
+                && local.z >= keepMin.z && local.z <= keepMax.z;
         }
     }
 }

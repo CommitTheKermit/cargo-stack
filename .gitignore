@@ -40,3 +40,7 @@ crashlytics-build.properties
 # OS files
 .DS_Store
 Thumbs.db
+
+# Unity Test Framework 가 PlayMode 실행 중 만드는 임시 씬
+/Assets/InitTestScene*.unity
+/Assets/InitTestScene*.unity.meta

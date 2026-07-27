@@ -21,6 +21,9 @@ namespace CargoStack
         [Tooltip("주행 진행도(0~1)에 대한 속도 배율. 급제동 구간은 이 커브의 골짜기로 만든다.")]
         [SerializeField] private AnimationCurve speedOverProgress = AnimationCurve.Linear(0f, 1f, 1f, 1f);
 
+        [Tooltip("최저 속도 배율. 0 이면 트럭이 영영 멈춰 설 수 있으므로 반드시 0보다 커야 한다.")]
+        [SerializeField] private float minSpeedFactor = 0.06f;
+
         [Header("지면 추종")]
         [SerializeField] private float frontAxleOffset = 1.5f;
         [SerializeField] private float rearAxleOffset = -1.5f;
@@ -60,7 +63,12 @@ namespace CargoStack
             }
 
             float progress = Mathf.InverseLerp(startX, goalX, transform.position.x);
-            Speed = maxSpeed * Mathf.Max(0f, speedOverProgress.Evaluate(progress));
+
+            // 바닥을 0 이 아니라 minSpeedFactor 로 잡는다. 급제동 골짜기를 좁고 깊게 파면
+            // 커브를 부드럽게 이을 때 값이 음수까지 내려가는데, 그걸 0 으로 자르면
+            // 진행도가 더 이상 늘지 않아 트럭이 그 자리에 영영 서 버린다.
+            float factor = Mathf.Max(minSpeedFactor, speedOverProgress.Evaluate(progress));
+            Speed = maxSpeed * factor;
 
             float nextX = transform.position.x + Speed * Time.fixedDeltaTime;
             bool reachedGoal = nextX >= goalX;

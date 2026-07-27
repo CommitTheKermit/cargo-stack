@@ -6,6 +6,9 @@ namespace CargoStack
     /// 검증용 임시 HUD. 정식 UI 가 나오기 전까지 상태 확인과 물리 튜닝을 담당한다.
     /// 마찰 슬라이더는 PhysicsMaterial 에셋을 직접 고치므로 플레이를 멈춰도 값이 남는다(의도한 동작).
     /// 기획서 4.1: 마찰 튜닝이 이 게임 재미의 8할이라 1주차부터 조절 수단을 갖춰 둔다.
+    ///
+    /// 적재 중에는 1인칭 시점이라 커서가 잠겨 있다. Esc 로 커서를 풀어야 슬라이더를 만질 수 있고,
+    /// 화면을 다시 클릭하면 시점 조작으로 돌아간다.
     /// </summary>
     public class PrototypeHud : MonoBehaviour
     {
@@ -18,7 +21,7 @@ namespace CargoStack
 
         private void Update()
         {
-            if (Input.GetKeyDown(KeyCode.Space))
+            if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
             {
                 flow.StartDriving();
             }
@@ -33,14 +36,25 @@ namespace CargoStack
         {
             labelStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 15 };
 
-            GUILayout.BeginArea(new Rect(16f, 16f, 320f, 260f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(16f, 16f, 340f, 280f), GUI.skin.box);
 
             GUILayout.Label($"상태: {DescribeState()}", labelStyle);
-            GUILayout.Label($"남은 짐: {tracker.RemainingCount} / {tracker.TotalCount}", labelStyle);
+            GUILayout.Label($"짐칸에 남은 짐: {tracker.RemainingCount} / {tracker.TotalCount}", labelStyle);
             GUILayout.Space(6f);
 
-            GUILayout.Label("좌클릭 집기·놓기   R 회전", labelStyle);
-            GUILayout.Label("Space 출발   Backspace 재시작", labelStyle);
+            if (flow.State == GameState.Loading)
+            {
+                GUILayout.Label("WASD 이동   마우스 시점   Space 점프", labelStyle);
+                GUILayout.Label("E 집기·놓기   Q 회전", labelStyle);
+                GUILayout.Label("Enter 출발   Backspace 재시작", labelStyle);
+                GUILayout.Label("Esc 커서 풀기 (슬라이더 조작용)", labelStyle);
+            }
+            else
+            {
+                GUILayout.Label("좌클릭 드래그 시점 회전   휠 확대·축소", labelStyle);
+                GUILayout.Label("Backspace 재시작", labelStyle);
+            }
+
             GUILayout.Space(10f);
 
             GUILayout.Label("짐칸 마찰", labelStyle);
@@ -71,7 +85,7 @@ namespace CargoStack
         {
             return flow.State switch
             {
-                GameState.Loading => "적재 (짐을 쌓고 Space)",
+                GameState.Loading => "적재 (짐을 쌓고 Enter)",
                 GameState.Driving => "주행 중",
                 GameState.Result => tracker.DroppedCount == 0 ? "도착 - 완주!" : $"도착 - {tracker.DroppedCount}개 분실",
                 _ => flow.State.ToString(),

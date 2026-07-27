@@ -12,9 +12,11 @@ namespace CargoStack
     public class GameFlow : MonoBehaviour
     {
         [SerializeField] private TruckMover truck;
-        [SerializeField] private CargoPlacer placer;
         [SerializeField] private CargoTracker tracker;
-        [SerializeField] private CameraRig cameraRig;
+        [SerializeField] private CameraDirector cameraDirector;
+
+        [Tooltip("적재를 담당하는 1인칭 플레이어. 출발하면 통째로 비활성화된다.")]
+        [SerializeField] private GameObject player;
 
         public GameState State { get; private set; } = GameState.Loading;
 
@@ -65,8 +67,13 @@ namespace CargoStack
         {
             State = next;
 
-            placer.SetInteractable(next == GameState.Loading);
-            cameraRig.Frame(next);
+            // 플레이어를 먼저 치운다. 화물을 들고 있었다면 여기서 그 자리에 떨어진다.
+            if (next != GameState.Loading && player != null && player.activeSelf)
+            {
+                player.SetActive(false);
+            }
+
+            cameraDirector.Frame(next);
 
             if (next == GameState.Driving)
             {
