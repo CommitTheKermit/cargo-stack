@@ -6,7 +6,7 @@ namespace CargoStack
 {
     /// <summary>
     /// 이 게임의 핵심 조작. 1인칭으로 화물을 직접 집어 짐칸에 쌓는다.
-    /// E 로 집고 놓으며, 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 로 90도 돌린다.
+    /// E 로 집고 놓으며, 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 를 누르는 동안 반시계 방향으로 돌린다.
     ///
     /// 원본: nan2026-cargo(NAN 2026 사전과제)의 Assets/Spike/Runtime/PlayerCargoInteractor.cs.
     /// 네임스페이스와 화물 타입(CargoItem → Cargo)만 바꿔 가져왔다.
@@ -23,6 +23,7 @@ namespace CargoStack
         [SerializeField] private float placementRange = 4.5f;
         [SerializeField] private float minimumPlacementNormalY = 0.55f;
         [SerializeField] private float placementSurfaceGap = 0.01f;
+        [SerializeField, Min(0f)] private float previewRotationDegreesPerSecond = 90f;
         [SerializeField] private Color placementPreviewColor = new Color(0.25f, 1f, 0.45f, 0.38f);
 
         private readonly Dictionary<Collider, bool> heldColliderStates = new Dictionary<Collider, bool>();
@@ -100,12 +101,17 @@ namespace CargoStack
 
         public void RotatePlacementPreview()
         {
-            if (heldBody == null)
+            RotatePlacementPreview(Time.deltaTime);
+        }
+
+        public void RotatePlacementPreview(float deltaTime)
+        {
+            if (heldBody == null || deltaTime <= 0f)
             {
                 return;
             }
 
-            previewYaw = NormalizeYaw(previewYaw + 90f);
+            previewYaw = NormalizeYaw(previewYaw - previewRotationDegreesPerSecond * deltaTime);
             RefreshPlacementPreview();
         }
 
@@ -187,9 +193,9 @@ namespace CargoStack
                 }
             }
 
-            if (heldBody != null && Input.GetKeyDown(KeyCode.Q))
+            if (heldBody != null && Input.GetKey(KeyCode.Q))
             {
-                RotatePlacementPreview();
+                RotatePlacementPreview(Time.deltaTime);
             }
         }
 

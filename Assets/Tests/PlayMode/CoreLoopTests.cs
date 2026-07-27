@@ -88,6 +88,69 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 미리보기는_Q를_누른_시간만큼_반시계로_돌고_그_방향으로_놓인다()
+        {
+            // 씬과 플레이어 콜라이더가 카메라 광선을 가로채지 않도록, 별도 공간에서 검증한다.
+            Vector3 testOrigin = new Vector3(1000f, 0f, 1000f);
+            GameObject surface = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            surface.transform.SetPositionAndRotation(testOrigin, Quaternion.identity);
+            surface.transform.localScale = new Vector3(8f, 0.1f, 8f);
+
+            GameObject cameraObject = new GameObject("Preview Rotation Test Camera");
+            Camera previewCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.transform.SetPositionAndRotation(
+                testOrigin + new Vector3(0f, 3f, -3f),
+                Quaternion.LookRotation(new Vector3(0f, -3f, 3f).normalized, Vector3.up));
+
+            GameObject anchorObject = new GameObject("Preview Rotation Test Anchor");
+            anchorObject.transform.position = testOrigin + new Vector3(0f, 1f, -1f);
+
+            GameObject cargoObject = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            cargoObject.transform.position = testOrigin + new Vector3(0f, 1f, -1f);
+            Rigidbody body = cargoObject.AddComponent<Rigidbody>();
+            Cargo cargo = cargoObject.AddComponent<Cargo>();
+            player.SetWorldPose(testOrigin + new Vector3(-1.5f, 1f, -1f), Quaternion.identity, Vector3.zero);
+            interactor.Configure(anchorObject.transform, previewCamera);
+
+            yield return null;
+
+            Assert.IsTrue(interactor.TryPickUp(cargo), "사거리 안의 정사각 화물을 집지 못했다");
+            Assert.IsTrue(interactor.HasValidPlacement, "유효한 바닥에서 미리보기가 생성되지 않았다");
+
+            Quaternion initialPreviewRotation = interactor.PreviewRotation;
+            interactor.RotatePlacementPreview(0.2f);
+
+            float firstSignedYawDelta = Vector3.SignedAngle(
+                initialPreviewRotation * Vector3.forward,
+                interactor.PreviewRotation * Vector3.forward,
+                Vector3.up);
+            Assert.That(firstSignedYawDelta, Is.EqualTo(-18f).Within(0.01f),
+                "Q를 0.2초 누른 미리보기가 초당 90도 반시계로 돌지 않았다");
+
+            interactor.RotatePlacementPreview(0.3f);
+            float totalSignedYawDelta = Vector3.SignedAngle(
+                initialPreviewRotation * Vector3.forward,
+                interactor.PreviewRotation * Vector3.forward,
+                Vector3.up);
+            Assert.That(totalSignedYawDelta, Is.EqualTo(-45f).Within(0.01f),
+                "프레임 분할과 무관하게 Q를 누른 시간만큼 회전하지 않았다");
+
+            Quaternion rotatedPreviewRotation = interactor.PreviewRotation;
+            interactor.RefreshPlacementPreview();
+            Assert.That(Quaternion.Angle(rotatedPreviewRotation, interactor.PreviewRotation), Is.LessThan(0.01f),
+                "다음 미리보기 갱신에서 Q로 고른 방향이 사라졌다");
+
+            Assert.IsTrue(interactor.TryPlaceHeldCargo(), "유효한 미리보기에 화물을 놓지 못했다");
+            Assert.That(Quaternion.Angle(rotatedPreviewRotation, body.rotation), Is.LessThan(0.01f),
+                "놓인 화물의 자세가 미리보기에서 고른 방향과 다르다");
+
+            Object.Destroy(surface);
+            Object.Destroy(cameraObject);
+            Object.Destroy(anchorObject);
+            Object.Destroy(cargoObject);
+        }
+
+        [UnityTest]
         public IEnumerator 출발하면_1인칭에서_디오라마_시점으로_바뀐다()
         {
             Camera firstPerson = GameObject.Find("First Person Camera").GetComponent<Camera>();
