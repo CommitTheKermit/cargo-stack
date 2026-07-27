@@ -36,6 +36,11 @@ namespace CargoStack.EditorTools
             CaptureDiorama("side", 0f, 8f, 14f);
             CaptureDiorama("rear", 90f, 8f, 14f);
 
+            // 경로 전체. 굴곡 모양과 도로 이음매에 구멍이 없는지는 이 그림으로만 확인할 수 있다.
+            // 오르막·내리막이 얼마나 굽이치는지는 위에서 봐서는 판단이 안 되므로 옆에서도 한 장 찍는다.
+            CaptureRouteFraming("route-overview", 52f, 20f);
+            CaptureRouteFraming("route-profile", 4f, 0f);
+
             Debug.Log($"[CargoStack] 프리뷰 저장 완료: {OutputFolder}");
         }
 
@@ -54,6 +59,40 @@ namespace CargoStack.EditorTools
                 var offset = new Vector3(-1.05f + i % 3 * 1.05f, height * 0.5f + 0.02f, -0.5f + i / 3 * 1f);
                 cargo[i].transform.SetPositionAndRotation(bedAnchor.TransformPoint(offset), bedAnchor.rotation);
             }
+        }
+
+        /// <summary>
+        /// 경로 전체를 한 장에 담는다. 디오라마 카메라는 트럭을 축으로 돌기 때문에 이만큼 물러날 수
+        /// 없으므로, 캡처 동안만 카메라 자세를 직접 잡는다. 에디터에서는 LateUpdate 가 돌지 않아
+        /// DioramaCamera 가 자세를 되돌리지 않는다.
+        /// </summary>
+        private static void CaptureRouteFraming(string label, float pitch, float yaw)
+        {
+            RoutePath route = Object.FindFirstObjectByType<RoutePath>();
+            if (route == null)
+            {
+                Debug.LogError("[CargoStack] 씬에 RoutePath 가 없다");
+                return;
+            }
+
+            var bounds = new Bounds(route.SampleAt(0), Vector3.zero);
+            for (int i = 1; i < route.SampleCount; i++)
+            {
+                bounds.Encapsulate(route.SampleAt(i));
+            }
+
+            GameObject holder = GameObject.Find("Diorama Camera");
+            Camera camera = holder.GetComponent<Camera>();
+
+            // 가로로 가장 긴 축이 화면에 들어가는 거리. 여유 15% 를 둔다.
+            float horizontalHalfFov = Mathf.Atan(
+                Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad) * Width / Height);
+            float distance = Mathf.Max(bounds.extents.x, bounds.extents.z) * 1.15f / Mathf.Tan(horizontalHalfFov);
+
+            Quaternion rotation = Quaternion.Euler(pitch, yaw, 0f);
+            holder.transform.SetPositionAndRotation(bounds.center - rotation * Vector3.forward * distance, rotation);
+
+            CaptureCamera("Diorama Camera", $"{OutputFolder}/{label}.png");
         }
 
         private static void CaptureDiorama(string label, float yaw, float pitch, float distance)

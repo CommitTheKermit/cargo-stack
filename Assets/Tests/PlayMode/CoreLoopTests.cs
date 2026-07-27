@@ -118,6 +118,65 @@ namespace CargoStack.Tests
             Assert.AreEqual(GameState.Result, flow.State, "제한 시간 안에 도착하지 못했다");
         }
 
+        /// <summary>
+        /// 굴곡은 급제동 다음가는 위협이다. 마루에서는 짐이 가벼워져 마찰이 풀리고
+        /// 골짜기에서는 눌린다. 경로를 평지로 되돌려 놓는 퇴행은 다른 테스트에 걸리지 않는다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 트럭은_오르막과_내리막을_오르내린다()
+        {
+            float steepestClimb = 0f;
+            float steepestDrop = 0f;
+            float lowest = truck.transform.position.y;
+            float highest = lowest;
+
+            Time.timeScale = 3f;
+            flow.StartDriving();
+
+            float remaining = DriveTimeoutSeconds;
+            while (flow.State != GameState.Result && remaining > 0f)
+            {
+                // 차체의 앞은 로컬 +X 다. 그 방향의 y 성분이 곧 지금 밟고 있는 경사다.
+                float slope = Mathf.Asin(Mathf.Clamp(truck.transform.right.y, -1f, 1f)) * Mathf.Rad2Deg;
+                steepestClimb = Mathf.Max(steepestClimb, slope);
+                steepestDrop = Mathf.Min(steepestDrop, slope);
+                lowest = Mathf.Min(lowest, truck.transform.position.y);
+                highest = Mathf.Max(highest, truck.transform.position.y);
+
+                remaining -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            Debug.Log($"[CargoStack] 고저차 {highest - lowest:0.0}m, " +
+                $"최대 오르막 {steepestClimb:0.0}도, 최대 내리막 {steepestDrop:0.0}도");
+
+            Assert.That(highest - lowest, Is.GreaterThan(4f), "경로가 거의 평평하다");
+            Assert.That(steepestClimb, Is.GreaterThan(8f), "제대로 된 오르막이 없다");
+            Assert.That(steepestDrop, Is.LessThan(-8f), "제대로 된 내리막이 없다");
+        }
+
+        /// <summary>
+        /// 1인칭 카메라가 플레이어 몸통에 매달려 있어서, 몸통이 물리로 돌면 시점이 통째로 홱 돈다.
+        /// 상자나 트럭에 부딪힐 때마다 화면이 돌아가는 문제가 실제로 있었다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 몸통에_충격이_와도_1인칭_시점이_돌아가지_않는다()
+        {
+            Transform view = GameObject.Find("First Person Camera").transform;
+            Quaternion before = view.rotation;
+
+            // 상자 모서리를 들이받은 것과 같은, 무게중심을 벗어난 충격.
+            player.Body.AddTorque(Vector3.up * 400f, ForceMode.Impulse);
+
+            for (int i = 0; i < 30; i++)
+            {
+                yield return null;
+            }
+
+            Assert.That(Quaternion.Angle(before, view.rotation), Is.LessThan(1f),
+                "부딪힌 충격이 시점을 돌렸다. 플레이어 Rigidbody 의 회전이 잠겨 있어야 한다");
+        }
+
         [UnityTest]
         public IEnumerator 짐칸에_실은_상자는_마찰만으로_목적지까지_실려_간다()
         {
