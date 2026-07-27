@@ -140,8 +140,11 @@ namespace CargoStack
             Vector3 previewColliderCenter = hit.point + hit.normal * (supportDistance + placementSurfaceGap);
 
             previewCargoPosition = previewColliderCenter - previewCargoRotation * scaledCenter;
-            placementPreview.transform.SetPositionAndRotation(previewColliderCenter, previewCargoRotation);
-            placementPreview.transform.localScale = halfSize * 2f;
+            // 프리뷰의 피벗은 BoxCollider 중심이 아니라 화물 루트다. 실제 시각 계층을
+            // 그대로 복제했으므로, 놓일 화물과 같은 루트 자세를 써야 실루엣과 프록시가
+            // 일치한다.
+            placementPreview.transform.SetPositionAndRotation(previewCargoPosition, previewCargoRotation);
+            placementPreview.transform.localScale = Vector3.one;
             hasValidPlacement = true;
             SetPlacementPreviewVisible(true);
         }
@@ -250,19 +253,81 @@ namespace CargoStack
         private void CreatePlacementPreview()
         {
             DestroyPlacementPreview();
-            placementPreview = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            placementPreview = new GameObject("CargoPlacementPreview");
             placementPreview.name = "CargoPlacementPreview";
             placementPreview.layer = LayerMask.NameToLayer("Ignore Raycast");
-
-            Collider previewCollider = placementPreview.GetComponent<Collider>();
-            previewCollider.enabled = false;
-            DestroyRuntimeObject(previewCollider);
-
-            Renderer previewRenderer = placementPreview.GetComponent<Renderer>();
-            previewRenderer.shadowCastingMode = ShadowCastingMode.Off;
-            previewRenderer.receiveShadows = false;
             placementPreviewMaterial = CreateTransparentPreviewMaterial();
-            previewRenderer.sharedMaterial = placementPreviewMaterial;
+            CopyHeldCargoVisualsToPreview();
+        }
+
+        /// <summary>
+        /// 물리 프록시(BoxCollider)를 확대해 보이던 기존 큐브 대신, 실제 화물의 렌더러
+        /// 계층을 복제한다. 프리뷰에는 충돌체나 방향 마커를 추가하지 않는다.
+        /// </summary>
+        private void CopyHeldCargoVisualsToPreview()
+        {
+            bool copiedVisual = false;
+            foreach (Transform child in heldBody.transform)
+            {
+                if (child.GetComponentInChildren<Renderer>(true) == null)
+                {
+                    continue;
+                }
+
+                GameObject visualCopy = Instantiate(child.gameObject, placementPreview.transform, false);
+                visualCopy.name = $"PreviewVisual_{child.name}";
+                visualCopy.transform.SetLocalPositionAndRotation(child.localPosition, child.localRotation);
+                visualCopy.transform.localScale = child.localScale;
+                PreparePreviewVisual(visualCopy);
+                copiedVisual = true;
+            }
+
+            // 테스트용 단순 화물처럼 Renderer가 Cargo 루트에 직접 붙은 경우에도, 같은
+            // 메시를 사용한다. 실제 씬 화물은 위 분기로 ImportedVisual 계층을 복제한다.
+            if (!copiedVisual)
+            {
+                CopyRootRendererToPreview();
+            }
+        }
+
+        private void CopyRootRendererToPreview()
+        {
+            MeshFilter sourceFilter = heldBody.GetComponent<MeshFilter>();
+            MeshRenderer sourceRenderer = heldBody.GetComponent<MeshRenderer>();
+            if (sourceFilter == null || sourceFilter.sharedMesh == null || sourceRenderer == null)
+            {
+                return;
+            }
+
+            var visualCopy = new GameObject("PreviewVisual_Root");
+            visualCopy.transform.SetParent(placementPreview.transform, false);
+            visualCopy.AddComponent<MeshFilter>().sharedMesh = sourceFilter.sharedMesh;
+            visualCopy.AddComponent<MeshRenderer>().sharedMaterial = placementPreviewMaterial;
+            PreparePreviewVisual(visualCopy);
+        }
+
+        private void PreparePreviewVisual(GameObject visual)
+        {
+            foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
+            {
+                collider.enabled = false;
+                DestroyRuntimeObject(collider);
+            }
+
+            foreach (Rigidbody body in visual.GetComponentsInChildren<Rigidbody>(true))
+            {
+                body.isKinematic = true;
+                DestroyRuntimeObject(body);
+            }
+
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.shadowCastingMode = ShadowCastingMode.Off;
+                renderer.receiveShadows = false;
+                renderer.sharedMaterial = placementPreviewMaterial;
+            }
+
+            SetLayerRecursively(visual.transform, placementPreview.layer);
         }
 
         private Material CreateTransparentPreviewMaterial()
@@ -376,6 +441,15 @@ namespace CargoStack
         private static float NormalizeYaw(float yaw)
         {
             return Mathf.Repeat(yaw, 360f);
+        }
+
+        private static void SetLayerRecursively(Transform target, int layer)
+        {
+            target.gameObject.layer = layer;
+            foreach (Transform child in target)
+            {
+                SetLayerRecursively(child, layer);
+            }
         }
 
         private static void DestroyRuntimeObject(Object target)

@@ -122,6 +122,75 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 초기_화물은_Zup_원본을_Yup으로_바로_세운다()
+        {
+            foreach (Cargo item in GetCargo())
+            {
+                Transform visual = FindImportedVisual(item);
+                Assert.NotNull(visual, $"{item.name} 에 가져온 모델 시각물이 없다");
+                Assert.That(Vector3.Dot(visual.forward, Vector3.up), Is.GreaterThan(0.99f),
+                    $"{item.name} 의 Z-up 원본이 Unity에서 거꾸로 서 있다");
+            }
+
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 가져온_화물의_미리보기는_실제_메시_실루엣을_복제한다()
+        {
+            Vector3 testOrigin = new Vector3(1200f, 0f, 1200f);
+            GameObject surface = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            surface.transform.SetPositionAndRotation(testOrigin, Quaternion.identity);
+            surface.transform.localScale = new Vector3(8f, 0.1f, 8f);
+
+            GameObject cameraObject = new GameObject("Preview Shape Test Camera");
+            Camera previewCamera = cameraObject.AddComponent<Camera>();
+            cameraObject.transform.SetPositionAndRotation(
+                testOrigin + new Vector3(0f, 3f, -3f),
+                Quaternion.LookRotation(new Vector3(0f, -3f, 3f).normalized, Vector3.up));
+
+            GameObject anchorObject = new GameObject("Preview Shape Test Anchor");
+            anchorObject.transform.position = testOrigin + new Vector3(0f, 1f, -1f);
+
+            Cargo cargo = FindCargoWithVisual("FloorLamp");
+            Rigidbody body = cargo.Body;
+            body.position = testOrigin + new Vector3(0f, 1f, -1f);
+            body.rotation = Quaternion.identity;
+            cargo.transform.SetPositionAndRotation(body.position, body.rotation);
+            player.SetWorldPose(testOrigin + new Vector3(-1.5f, 1f, -1f), Quaternion.identity, Vector3.zero);
+            interactor.Configure(anchorObject.transform, previewCamera);
+
+            yield return new WaitForFixedUpdate();
+
+            Assert.IsTrue(interactor.TryPickUp(cargo), "가져온 화물을 집지 못했다");
+            Assert.IsTrue(interactor.HasValidPlacement, "가져온 화물의 유효한 미리보기가 생성되지 않았다");
+
+            Transform sourceVisual = FindImportedVisual(cargo);
+            MeshFilter sourceMesh = sourceVisual.GetComponentInChildren<MeshFilter>(true);
+            Assert.NotNull(sourceMesh, "원본 가져온 화물에 MeshFilter 가 없다");
+
+            GameObject preview = GameObject.Find("CargoPlacementPreview");
+            Assert.NotNull(preview, "화물 미리보기가 생성되지 않았다");
+            Assert.IsNull(preview.GetComponent<Renderer>(), "미리보기 루트가 직육면체 Renderer 를 사용한다");
+            Assert.IsEmpty(preview.GetComponentsInChildren<Collider>(true), "미리보기에 불필요한 충돌체가 남아 있다");
+
+            MeshFilter[] previewMeshes = preview.GetComponentsInChildren<MeshFilter>(true);
+            Assert.IsNotEmpty(previewMeshes, "미리보기에 실제 메시가 없다");
+            bool containsSourceMesh = false;
+            foreach (MeshFilter previewMesh in previewMeshes)
+            {
+                containsSourceMesh |= previewMesh.sharedMesh == sourceMesh.sharedMesh;
+            }
+
+            Assert.IsTrue(containsSourceMesh, "미리보기가 집은 화물의 실제 메시를 복제하지 않았다");
+
+            interactor.DropHeldCargo();
+            Object.Destroy(surface);
+            Object.Destroy(cameraObject);
+            Object.Destroy(anchorObject);
+        }
+
+        [UnityTest]
         public IEnumerator 미리보기는_Q를_누른_시간만큼_반시계로_돌고_그_방향으로_놓인다()
         {
             // 씬과 플레이어 콜라이더가 카메라 광선을 가로채지 않도록, 별도 공간에서 검증한다.
@@ -379,6 +448,34 @@ namespace CargoStack.Tests
             Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
             Assert.AreEqual(ExpectedCargoCount, cargo.Length, $"짐 {ExpectedCargoCount}개를 기대했다");
             return cargo;
+        }
+
+        private static Transform FindImportedVisual(Cargo cargo)
+        {
+            foreach (Transform child in cargo.transform)
+            {
+                if (child.name.StartsWith("ImportedVisual_"))
+                {
+                    return child;
+                }
+            }
+
+            return null;
+        }
+
+        private Cargo FindCargoWithVisual(string visualName)
+        {
+            foreach (Cargo cargo in GetCargo())
+            {
+                Transform visual = FindImportedVisual(cargo);
+                if (visual != null && visual.name.Contains(visualName))
+                {
+                    return cargo;
+                }
+            }
+
+            Assert.Fail($"{visualName} 가져온 화물을 찾지 못했다");
+            return null;
         }
 
         private void MoveCargo(Cargo cargo, Vector3 bedLocalOffset)

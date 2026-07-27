@@ -464,9 +464,9 @@ namespace CargoStack.EditorTools
             visual.name = $"ImportedVisual_{definition.Name}";
             visual.transform.SetParent(cargoRoot, false);
             visual.transform.localPosition = Vector3.zero;
-            // The supplied Meshy FBX files use Z-up. Turn them upright for Unity's Y-up world
+            // The supplied Meshy FBX files use Z-up. Turn their +Z axis toward Unity's +Y world
             // before measuring the renderer and creating its matching physics proxy.
-            visual.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
             Vector3 importedScale = visual.transform.localScale;
 
             foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
