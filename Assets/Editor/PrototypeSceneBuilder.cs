@@ -25,6 +25,13 @@ namespace CargoStack.EditorTools
         private const string MaterialFolder = "Assets/Materials";
         private const string MeshFolder = "Assets/Meshes";
         private const string CargoArtFolder = "Assets/Art/Cargo";
+        private const string VehicleArtFolder = "Assets/Art/Vehicles";
+        private const string CartoonTruckPrefabPath =
+            VehicleArtFolder + "/CartoonTruck/Truck.prefab";
+        private const string LowPolyPickupPrefabPath =
+            VehicleArtFolder + "/LowPolyPickup/Prefabs/Pick Up_7.prefab";
+        private const string FreePickupPrefabPath =
+            VehicleArtFolder + "/FreePickup/Prefabs/Pickup.prefab";
 
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
@@ -362,7 +369,131 @@ namespace CargoStack.EditorTools
             AddWheel(truck.transform, new Vector3(-1.75f, -0.18f, 1.22f), wheelMaterial);
 
             bedAnchor = CreatePoint("BedAnchor", truck.transform, new Vector3(-0.95f, 0.225f, 0f));
+            AddTruckVisualCandidates(truck.transform);
             return truck;
+        }
+
+        private static void AddTruckVisualCandidates(Transform truck)
+        {
+            EnsureVehicleMaterialsUseProjectShader();
+            SetTruckPrototypeRenderersVisible(truck, false);
+
+            GameObject cartoonTruck = AddVehicleVisual(
+                truck,
+                CartoonTruckPrefabPath,
+                "CartoonTruckVisual",
+                new Vector3(0f, -RideHeight, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                Vector3.one);
+            GameObject lowPolyPickup = AddVehicleVisual(
+                truck,
+                LowPolyPickupPrefabPath,
+                "LowPolyPickupVisual",
+                new Vector3(0f, -RideHeight, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                Vector3.one * 1.25f);
+            GameObject freePickup = AddVehicleVisual(
+                truck,
+                FreePickupPrefabPath,
+                "FreePickupVisual",
+                new Vector3(0f, -0.9f, 0f),
+                Quaternion.Euler(0f, 90f, 0f),
+                Vector3.one * 0.65f);
+            SetNamedChildActive(freePickup, "PickupAwning", false);
+
+            var selector = truck.gameObject.AddComponent<TruckVisualSelector>();
+            using (var wiring = new Wiring(selector))
+            {
+                wiring.Refs(
+                    "candidates",
+                    new Object[] { cartoonTruck, lowPolyPickup, freePickup });
+            }
+
+            selector.Select(0);
+        }
+
+        private static GameObject AddVehicleVisual(
+            Transform truck,
+            string prefabPath,
+            string visualName,
+            Vector3 localPosition,
+            Quaternion localRotation,
+            Vector3 localScale)
+        {
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)
+                ?? throw new InvalidOperationException($"트럭 후보 프리팹을 찾지 못했다: {prefabPath}");
+
+            var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
+            visual.name = visualName;
+            visual.transform.SetParent(truck, false);
+            visual.transform.localPosition = localPosition;
+            visual.transform.localRotation = localRotation;
+            visual.transform.localScale = localScale;
+
+            foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
+            {
+                Object.DestroyImmediate(collider);
+            }
+
+            foreach (Rigidbody body in visual.GetComponentsInChildren<Rigidbody>(true))
+            {
+                Object.DestroyImmediate(body);
+            }
+
+            foreach (MonoBehaviour behaviour in visual.GetComponentsInChildren<MonoBehaviour>(true))
+            {
+                Object.DestroyImmediate(behaviour);
+            }
+
+            foreach (Transform child in visual.GetComponentsInChildren<Transform>(true))
+            {
+                GameObjectUtility.RemoveMonoBehavioursWithMissingScript(child.gameObject);
+            }
+
+            return visual;
+        }
+
+        private static void SetNamedChildActive(GameObject root, string childName, bool active)
+        {
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (child.name != childName)
+                {
+                    continue;
+                }
+
+                child.gameObject.SetActive(active);
+                return;
+            }
+
+            throw new InvalidOperationException($"{root.name}에서 {childName} 시각물을 찾지 못했다");
+        }
+
+        private static void SetTruckPrototypeRenderersVisible(Transform truck, bool visible)
+        {
+            foreach (Renderer renderer in truck.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.enabled = visible;
+            }
+        }
+
+        private static void EnsureVehicleMaterialsUseProjectShader()
+        {
+            Shader standard = Shader.Find("Standard")
+                ?? throw new InvalidOperationException("트럭 후보 재질에 쓸 Standard 셰이더를 찾지 못했다");
+
+            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { VehicleArtFolder }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+                if (material == null || material.shader == standard)
+                {
+                    continue;
+                }
+
+                material.shader = standard;
+                EditorUtility.SetDirty(material);
+            }
         }
 
         private static void AddPart(

@@ -22,6 +22,7 @@ namespace CargoStack.Tests
         private PlayerController player;
         private PlayerCargoInteractor interactor;
         private Transform bedAnchor;
+        private TruckVisualSelector visualSelector;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -34,6 +35,7 @@ namespace CargoStack.Tests
             player = Object.FindFirstObjectByType<PlayerController>();
             interactor = Object.FindFirstObjectByType<PlayerCargoInteractor>();
             bedAnchor = GameObject.Find("BedAnchor").transform;
+            visualSelector = truck.GetComponent<TruckVisualSelector>();
 
             Assert.NotNull(flow, "씬에 GameFlow 가 없다");
             Assert.NotNull(tracker, "씬에 CargoTracker 가 없다");
@@ -41,6 +43,7 @@ namespace CargoStack.Tests
             Assert.NotNull(player, "씬에 PlayerController 가 없다");
             Assert.NotNull(interactor, "씬에 PlayerCargoInteractor 가 없다");
             Assert.NotNull(bedAnchor, "씬에 BedAnchor 가 없다");
+            Assert.NotNull(visualSelector, "Truck 루트에 TruckVisualSelector 가 없다");
 
             yield return null;
         }
@@ -130,6 +133,99 @@ namespace CargoStack.Tests
                 Assert.NotNull(visual, $"{item.name} 에 가져온 모델 시각물이 없다");
                 Assert.That(Vector3.Dot(visual.forward, Vector3.up), Is.GreaterThan(0.99f),
                     $"{item.name} 의 Z-up 원본이 Unity에서 거꾸로 서 있다");
+            }
+
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 트럭_시각물_후보_셋은_카툰을_기본으로_하나만_보인다()
+        {
+            string[] expectedObjects =
+            {
+                "CartoonTruckVisual",
+                "LowPolyPickupVisual",
+                "FreePickupVisual",
+            };
+            string[] expectedNames =
+            {
+                "카툰 트럭",
+                "로우폴리 픽업",
+                "무료 픽업",
+            };
+
+            Assert.AreEqual(3, visualSelector.CandidateCount, "트럭 비교 후보가 세 개가 아니다");
+            Assert.AreEqual(0, visualSelector.ActiveIndex, "기본 후보가 카툰 트럭이 아니다");
+            Assert.AreEqual("카툰 트럭", visualSelector.ActiveCandidateName);
+
+            for (int index = 0; index < visualSelector.CandidateCount; index++)
+            {
+                GameObject candidate = visualSelector.GetCandidate(index);
+                Assert.NotNull(candidate, $"{index + 1}번 트럭 후보가 없다");
+                Assert.AreEqual(expectedObjects[index], candidate.name);
+                Assert.AreEqual(expectedNames[index], visualSelector.GetCandidateName(index));
+                Assert.AreSame(truck.transform, candidate.transform.parent,
+                    $"{candidate.name}이 단일 Truck 루트 밖에 있다");
+                Assert.IsNotEmpty(candidate.GetComponentsInChildren<Renderer>(true),
+                    $"{candidate.name}에 렌더러가 없다");
+            }
+
+            Assert.AreEqual(1, CountActiveCandidates(), "초기 상태에서 여러 트럭 후보가 동시에 보인다");
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 숫자키와_화면_버튼은_같은_트럭_후보를_하나씩_고른다()
+        {
+            visualSelector.SelectFromButton(1);
+            Assert.AreEqual(1, visualSelector.ActiveIndex, "두 번째 화면 버튼이 로우폴리 픽업을 고르지 않았다");
+            Assert.AreEqual("로우폴리 픽업", visualSelector.ActiveCandidateName);
+            Assert.AreEqual(1, CountActiveCandidates(), "화면 버튼 선택 뒤 여러 후보가 동시에 보인다");
+
+            Assert.IsTrue(visualSelector.SelectFromShortcut(KeyCode.Alpha3), "3 키가 후보 선택 키로 연결되지 않았다");
+            Assert.AreEqual(2, visualSelector.ActiveIndex, "3 키가 무료 픽업을 고르지 않았다");
+            Assert.AreEqual("무료 픽업", visualSelector.ActiveCandidateName);
+            Assert.AreEqual(1, CountActiveCandidates(), "숫자키 선택 뒤 여러 후보가 동시에 보인다");
+
+            Assert.IsTrue(visualSelector.SelectFromShortcut(KeyCode.Keypad1), "키패드 1이 후보 선택 키로 연결되지 않았다");
+            Assert.AreEqual(0, visualSelector.ActiveIndex, "키패드 1이 카툰 트럭을 고르지 않았다");
+            Assert.IsFalse(visualSelector.SelectFromShortcut(KeyCode.Q), "무관한 키가 트럭 후보 선택으로 처리됐다");
+            Assert.AreEqual(0, visualSelector.ActiveIndex, "무관한 키가 현재 후보를 바꿨다");
+            Assert.AreEqual(1, CountActiveCandidates(), "후보 전환 뒤 활성 시각물이 하나가 아니다");
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 후보_전환은_단일_트럭의_주행과_적재_물리를_바꾸지_않는다()
+        {
+            Assert.AreEqual(1, Object.FindObjectsByType<TruckMover>(FindObjectsSortMode.None).Length,
+                "씬에 게임플레이 TruckMover가 여러 개다");
+            Assert.AreEqual(1, truck.GetComponents<Rigidbody>().Length,
+                "Truck 루트의 Rigidbody가 하나가 아니다");
+            Assert.AreEqual(1, truck.GetComponents<TruckVisualSelector>().Length,
+                "Truck 루트의 후보 선택기가 하나가 아니다");
+            Assert.AreSame(truck.transform, bedAnchor.parent, "BedAnchor가 단일 Truck 루트에서 분리됐다");
+
+            Assert.NotNull(truck.transform.Find("BedFloor").GetComponent<BoxCollider>(),
+                "짐칸 바닥 Collider가 사라졌다");
+            Assert.NotNull(truck.transform.Find("BedWall_Left").GetComponent<BoxCollider>(),
+                "짐칸 왼쪽 벽 Collider가 사라졌다");
+            Assert.NotNull(truck.transform.Find("BedWall_Right").GetComponent<BoxCollider>(),
+                "짐칸 오른쪽 벽 Collider가 사라졌다");
+            Assert.NotNull(truck.transform.Find("BedWall_Rear").GetComponent<BoxCollider>(),
+                "짐칸 뒤쪽 벽 Collider가 사라졌다");
+            Assert.NotNull(truck.transform.Find("BedWall_Front").GetComponent<BoxCollider>(),
+                "짐칸 앞쪽 벽 Collider가 사라졌다");
+
+            for (int index = 0; index < visualSelector.CandidateCount; index++)
+            {
+                GameObject candidate = visualSelector.GetCandidate(index);
+                Assert.IsEmpty(candidate.GetComponentsInChildren<Collider>(true),
+                    $"{candidate.name}에 게임플레이와 겹치는 Collider가 남아 있다");
+                Assert.IsEmpty(candidate.GetComponentsInChildren<Rigidbody>(true),
+                    $"{candidate.name}에 게임플레이와 겹치는 Rigidbody가 남아 있다");
+                Assert.IsEmpty(candidate.GetComponentsInChildren<MonoBehaviour>(true),
+                    $"{candidate.name}에 외부 차량 제어 스크립트가 남아 있다");
             }
 
             yield break;
@@ -448,6 +544,17 @@ namespace CargoStack.Tests
             Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
             Assert.AreEqual(ExpectedCargoCount, cargo.Length, $"짐 {ExpectedCargoCount}개를 기대했다");
             return cargo;
+        }
+
+        private int CountActiveCandidates()
+        {
+            int activeCount = 0;
+            for (int index = 0; index < visualSelector.CandidateCount; index++)
+            {
+                activeCount += visualSelector.GetCandidate(index).activeSelf ? 1 : 0;
+            }
+
+            return activeCount;
         }
 
         private static Transform FindImportedVisual(Cargo cargo)

@@ -35,6 +35,7 @@ namespace CargoStack.EditorTools
             CaptureDiorama("top", 35f, 85f, 16f);
             CaptureDiorama("side", 0f, 8f, 14f);
             CaptureDiorama("rear", 90f, 8f, 14f);
+            CaptureTruckCandidates();
 
             // 경로 전체. 굴곡 모양과 도로 이음매에 구멍이 없는지는 이 그림으로만 확인할 수 있다.
             // 오르막·내리막이 얼마나 굽이치는지는 위에서 봐서는 판단이 안 되므로 옆에서도 한 장 찍는다.
@@ -42,6 +43,25 @@ namespace CargoStack.EditorTools
             CaptureRouteFraming("route-profile", 4f, 0f);
 
             Debug.Log($"[CargoStack] 프리뷰 저장 완료: {OutputFolder}");
+        }
+
+        private static void CaptureTruckCandidates()
+        {
+            TruckVisualSelector selector = Object.FindFirstObjectByType<TruckVisualSelector>();
+            if (selector == null)
+            {
+                Debug.LogError("[CargoStack] 씬에 TruckVisualSelector 가 없다");
+                return;
+            }
+
+            string[] labels = { "cartoon", "low-poly", "free-pickup" };
+            for (int index = 0; index < selector.CandidateCount; index++)
+            {
+                selector.Select(index);
+                CaptureDiorama($"truck-{labels[index]}", 35f, 28f, 13f);
+            }
+
+            selector.Select(0);
         }
 
         /// <summary>
