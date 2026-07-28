@@ -12,6 +12,9 @@ namespace CargoStack
         [SerializeField] private float insideLength;
         [SerializeField] private float insideWidth;
         [SerializeField] private float wallHeight;
+        [SerializeField] private float frontBarrierX;
+        [SerializeField] private float frontBarrierHeight;
+        [SerializeField] private float frontBarrierWidth;
         [SerializeField] private float floorThickness;
         [SerializeField] private float wallThickness;
 
@@ -22,6 +25,9 @@ namespace CargoStack
             float insideLength,
             float insideWidth,
             float wallHeight,
+            float frontBarrierX,
+            float frontBarrierHeight,
+            float frontBarrierWidth,
             float floorThickness = 0.12f,
             float wallThickness = 0.10f)
         {
@@ -31,6 +37,9 @@ namespace CargoStack
             this.insideLength = insideLength;
             this.insideWidth = insideWidth;
             this.wallHeight = wallHeight;
+            this.frontBarrierX = frontBarrierX;
+            this.frontBarrierHeight = frontBarrierHeight;
+            this.frontBarrierWidth = frontBarrierWidth;
             this.floorThickness = floorThickness;
             this.wallThickness = wallThickness;
         }
@@ -41,12 +50,16 @@ namespace CargoStack
         public float InsideLength => insideLength;
         public float InsideWidth => insideWidth;
         public float WallHeight => wallHeight;
+        public float FrontBarrierX => frontBarrierX;
+        public float FrontBarrierHeight => frontBarrierHeight;
+        public float FrontBarrierWidth => frontBarrierWidth;
         public float FloorThickness => floorThickness;
         public float WallThickness => wallThickness;
         public float MinX => centerX - insideLength * 0.5f;
         public float MaxX => centerX + insideLength * 0.5f;
         public float MinZ => centerZ - insideWidth * 0.5f;
         public float MaxZ => centerZ + insideWidth * 0.5f;
+        public float FrontCargoLimit => frontBarrierX - wallThickness * 0.5f;
     }
 
     /// <summary>
@@ -304,10 +317,13 @@ namespace CargoStack
             SetPart(
                 bedWallFront,
                 new Vector3(
-                    profile.MaxX + profile.WallThickness * 0.5f,
-                    wallCenterY,
+                    profile.FrontBarrierX,
+                    profile.FloorTop + profile.FrontBarrierHeight * 0.5f,
                     profile.CenterZ),
-                new Vector3(profile.WallThickness, profile.WallHeight, endWallWidth));
+                new Vector3(
+                    profile.WallThickness,
+                    profile.FrontBarrierHeight,
+                    profile.FrontBarrierWidth));
         }
 
         private void RebaseLoadedCargo(TruckBedProfile previousProfile, Vector3 localAnchorDelta)

@@ -421,9 +421,15 @@ namespace CargoStack.EditorTools
                 new[]
                 {
                     // Truck 로컬 좌표. 수평 상향 메시 삼각형과 안쪽 테두리를 계측한 보수적 적재 영역이다.
-                    new TruckBedProfile(-2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f),
-                    new TruckBedProfile(-2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f),
-                    new TruckBedProfile(-1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f),
+                    new TruckBedProfile(
+                        -2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f,
+                        -0.380f, 1.803f, 2.37f),
+                    new TruckBedProfile(
+                        -2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f,
+                        -0.445f, 1.208f, 2.50f),
+                    new TruckBedProfile(
+                        -1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f,
+                        -0.545f, 1.195f, 2.10f),
                 },
                 bedAnchor,
                 bedFloor,

@@ -236,9 +236,15 @@ namespace CargoStack.Tests
         {
             TruckBedProfile[] expectedProfiles =
             {
-                new TruckBedProfile(-2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f),
-                new TruckBedProfile(-2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f),
-                new TruckBedProfile(-1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f),
+                new TruckBedProfile(
+                    -2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f,
+                    -0.380f, 1.803f, 2.37f),
+                new TruckBedProfile(
+                    -2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f,
+                    -0.445f, 1.208f, 2.50f),
+                new TruckBedProfile(
+                    -1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f,
+                    -0.545f, 1.195f, 2.10f),
             };
 
             for (int index = 0; index < expectedProfiles.Length; index++)
@@ -295,13 +301,13 @@ namespace CargoStack.Tests
                 AssertBedPartMatches(
                     "BedWall_Front",
                     new Vector3(
-                        actual.MaxX + actual.WallThickness * 0.5f,
-                        actual.FloorTop + actual.WallHeight * 0.5f,
+                        actual.FrontBarrierX,
+                        actual.FloorTop + actual.FrontBarrierHeight * 0.5f,
                         actual.CenterZ),
                     new Vector3(
                         actual.WallThickness,
-                        actual.WallHeight,
-                        actual.InsideWidth));
+                        actual.FrontBarrierHeight,
+                        actual.FrontBarrierWidth));
             }
 
             yield break;
@@ -379,6 +385,64 @@ namespace CargoStack.Tests
                     Assert.That(localProxyBounds.max.z, Is.LessThanOrEqualTo(profile.MaxZ + 0.04f),
                         $"{visualSelector.ActiveCandidateName}에서 {cargo.name}이 짐칸 오른쪽 경계를 벗어났다");
                 }
+            }
+        }
+
+        [UnityTest]
+        public IEnumerator 세_후보의_앞_격벽은_가속된_화물이_캐빈으로_침범하는_것을_막는다()
+        {
+            Cargo impactCargo = FindCargoWithVisual("CardboardBox");
+            foreach (Cargo cargo in GetCargo())
+            {
+                if (cargo != impactCargo)
+                {
+                    cargo.gameObject.SetActive(false);
+                }
+            }
+
+            for (int index = 0; index < visualSelector.CandidateCount; index++)
+            {
+                visualSelector.Select(index);
+                TruckBedProfile profile = visualSelector.ActiveProfile;
+                BoxCollider proxy = impactCargo.GetComponent<BoxCollider>();
+                float startCenterX = profile.FrontCargoLimit - proxy.size.x * 0.5f - 0.40f;
+                Rigidbody body = impactCargo.Body;
+                body.position = truck.transform.TransformPoint(new Vector3(
+                    startCenterX,
+                    profile.FloorTop + proxy.size.y * 0.5f + 0.04f,
+                    profile.CenterZ));
+                body.rotation = truck.transform.rotation;
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+                impactCargo.transform.SetPositionAndRotation(body.position, body.rotation);
+                Physics.SyncTransforms();
+
+                yield return Settle(10);
+
+                body.linearVelocity = truck.transform.right * 10f;
+                float furthestColliderX = float.NegativeInfinity;
+                float furthestRendererX = float.NegativeInfinity;
+                for (int fixedStep = 0; fixedStep < 60; fixedStep++)
+                {
+                    yield return new WaitForFixedUpdate();
+                    furthestColliderX = Mathf.Max(
+                        furthestColliderX,
+                        GetTruckLocalBounds(proxy.bounds).max.x);
+                    furthestRendererX = Mathf.Max(
+                        furthestRendererX,
+                        GetTruckLocalBounds(GetRendererBounds(FindImportedVisual(impactCargo))).max.x);
+                }
+
+                float worldFloorTop = truck.transform.TransformPoint(
+                    new Vector3(profile.CenterX, profile.FloorTop, profile.CenterZ)).y;
+                Assert.That(furthestColliderX, Is.GreaterThan(profile.FrontCargoLimit - 0.12f),
+                    $"{visualSelector.ActiveCandidateName}에서 시험 화물이 앞 격벽까지 도달하지 않았다");
+                Assert.That(furthestColliderX, Is.LessThanOrEqualTo(profile.FrontCargoLimit + 0.04f),
+                    $"{visualSelector.ActiveCandidateName}에서 화물 콜라이더가 앞 격벽을 뚫고 캐빈에 들어갔다");
+                Assert.That(furthestRendererX, Is.LessThanOrEqualTo(profile.FrontCargoLimit + 0.04f),
+                    $"{visualSelector.ActiveCandidateName}에서 화물 메시가 앞 격벽을 뚫고 캐빈에 들어갔다");
+                Assert.That(proxy.bounds.min.y, Is.GreaterThanOrEqualTo(worldFloorTop - 0.04f),
+                    $"{visualSelector.ActiveCandidateName}의 앞 격벽 충돌 뒤 화물이 바닥 아래로 빠졌다");
             }
         }
 
@@ -781,6 +845,18 @@ namespace CargoStack.Tests
             Assert.That(actual.InsideLength, Is.EqualTo(expected.InsideLength).Within(0.001f), $"{label} 안쪽 길이");
             Assert.That(actual.InsideWidth, Is.EqualTo(expected.InsideWidth).Within(0.001f), $"{label} 안쪽 너비");
             Assert.That(actual.WallHeight, Is.EqualTo(expected.WallHeight).Within(0.001f), $"{label} 벽 높이");
+            Assert.That(
+                actual.FrontBarrierX,
+                Is.EqualTo(expected.FrontBarrierX).Within(0.001f),
+                $"{label} 앞 격벽 X");
+            Assert.That(
+                actual.FrontBarrierHeight,
+                Is.EqualTo(expected.FrontBarrierHeight).Within(0.001f),
+                $"{label} 앞 격벽 높이");
+            Assert.That(
+                actual.FrontBarrierWidth,
+                Is.EqualTo(expected.FrontBarrierWidth).Within(0.001f),
+                $"{label} 앞 격벽 너비");
         }
 
         private static void AssertVector3(Vector3 actual, Vector3 expected, string label)

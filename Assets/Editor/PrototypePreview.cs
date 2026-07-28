@@ -60,6 +60,8 @@ namespace CargoStack.EditorTools
                 selector.Select(index);
                 LoadRepresentativeCargoOntoActiveBed(selector);
                 CaptureDiorama($"truck-{labels[index]}", 35f, 28f, 13f);
+                LoadRepresentativeCargoAgainstFrontBarrier(selector);
+                CaptureDiorama($"truck-front-loaded-{labels[index]}", 35f, 28f, 13f);
             }
 
             selector.Select(0);
@@ -126,6 +128,36 @@ namespace CargoStack.EditorTools
             }
 
             throw new System.InvalidOperationException($"캡처용 화물을 찾지 못했다: {visualName}");
+        }
+
+        private static void LoadRepresentativeCargoAgainstFrontBarrier(TruckVisualSelector selector)
+        {
+            TruckBedProfile profile = selector.ActiveProfile;
+            Cargo[] cargo =
+            {
+                FindCargoWithVisual("CardboardBox"),
+                FindCargoWithVisual("BlueBarrel"),
+                FindCargoWithVisual("MarbleBust"),
+            };
+            Vector2[] offsets =
+            {
+                new Vector2(-0.65f, 0f),
+                new Vector2(-0.05f, -0.48f),
+                new Vector2(-0.05f, 0.48f),
+            };
+
+            for (int index = 0; index < cargo.Length; index++)
+            {
+                BoxCollider proxy = cargo[index].GetComponent<BoxCollider>();
+                Vector2 offset = offsets[index];
+                Vector3 localPosition = new Vector3(
+                    profile.FrontCargoLimit - proxy.size.x * 0.5f + offset.x,
+                    profile.FloorTop + proxy.size.y * 0.5f + 0.02f,
+                    profile.CenterZ + offset.y);
+                cargo[index].transform.SetPositionAndRotation(
+                    selector.transform.TransformPoint(localPosition),
+                    selector.transform.rotation);
+            }
         }
 
         /// <summary>
