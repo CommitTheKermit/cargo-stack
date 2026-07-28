@@ -25,9 +25,11 @@ namespace CargoStack.EditorTools
 
             // 1인칭은 게임 시작 그대로(짐이 바닥에 널린 상태)를 찍어야 첫인상을 볼 수 있다.
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person.png");
+            CaptureDiorama("final-blue-truck-empty", 35f, 28f, 13f);
 
-            LoadCargoOntoBedForPreview();
+            LoadRepresentativeCargoOntoBed();
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person-loaded.png");
+            CaptureDiorama("final-blue-truck-loaded", 35f, 28f, 13f);
 
             // 자유 시점이 실제로 원하는 각도까지 도는지 대표 네 각도로 확인한다.
             // 트럭이 +X 로 달리므로 yaw 0 이 옆면, yaw 90 이 뒷면이다.
@@ -35,7 +37,6 @@ namespace CargoStack.EditorTools
             CaptureDiorama("top", 35f, 85f, 16f);
             CaptureDiorama("side", 0f, 8f, 14f);
             CaptureDiorama("rear", 90f, 8f, 14f);
-            CaptureTruckCandidates();
 
             // 경로 전체. 굴곡 모양과 도로 이음매에 구멍이 없는지는 이 그림으로만 확인할 수 있다.
             // 오르막·내리막이 얼마나 굽이치는지는 위에서 봐서는 판단이 안 되므로 옆에서도 한 장 찍는다.
@@ -45,31 +46,9 @@ namespace CargoStack.EditorTools
             Debug.Log($"[CargoStack] 프리뷰 저장 완료: {OutputFolder}");
         }
 
-        private static void CaptureTruckCandidates()
+        private static void LoadRepresentativeCargoOntoBed()
         {
-            TruckVisualSelector selector = Object.FindFirstObjectByType<TruckVisualSelector>();
-            if (selector == null)
-            {
-                Debug.LogError("[CargoStack] 씬에 TruckVisualSelector 가 없다");
-                return;
-            }
-
-            string[] labels = { "cartoon", "low-poly", "free-pickup" };
-            for (int index = 0; index < selector.CandidateCount; index++)
-            {
-                selector.Select(index);
-                LoadRepresentativeCargoOntoActiveBed(selector);
-                CaptureDiorama($"truck-{labels[index]}", 35f, 28f, 13f);
-                LoadRepresentativeCargoAgainstFrontBarrier(selector);
-                CaptureDiorama($"truck-front-loaded-{labels[index]}", 35f, 28f, 13f);
-            }
-
-            selector.Select(0);
-        }
-
-        private static void LoadRepresentativeCargoOntoActiveBed(TruckVisualSelector selector)
-        {
-            TruckBedProfile profile = selector.ActiveProfile;
+            Transform bedAnchor = GameObject.Find("BedAnchor").transform;
             Cargo[] cargo =
             {
                 FindCargoWithVisual("CardboardBox"),
@@ -104,13 +83,12 @@ namespace CargoStack.EditorTools
             {
                 BoxCollider proxy = cargo[index].GetComponent<BoxCollider>();
                 Vector2 offset = offsets[index];
-                Vector3 localPosition = new Vector3(
-                    profile.CenterX + offset.x,
-                    profile.FloorTop + proxy.size.y * 0.5f + 0.02f,
-                    profile.CenterZ + offset.y);
                 cargo[index].transform.SetPositionAndRotation(
-                    selector.transform.TransformPoint(localPosition),
-                    selector.transform.rotation);
+                    bedAnchor.TransformPoint(new Vector3(
+                        offset.x,
+                        proxy.size.y * 0.5f + 0.02f,
+                        offset.y)),
+                    bedAnchor.rotation);
             }
         }
 
@@ -128,53 +106,6 @@ namespace CargoStack.EditorTools
             }
 
             throw new System.InvalidOperationException($"캡처용 화물을 찾지 못했다: {visualName}");
-        }
-
-        private static void LoadRepresentativeCargoAgainstFrontBarrier(TruckVisualSelector selector)
-        {
-            TruckBedProfile profile = selector.ActiveProfile;
-            Cargo[] cargo =
-            {
-                FindCargoWithVisual("CardboardBox"),
-                FindCargoWithVisual("BlueBarrel"),
-                FindCargoWithVisual("MarbleBust"),
-            };
-            Vector2[] offsets =
-            {
-                new Vector2(-0.65f, 0f),
-                new Vector2(-0.05f, -0.48f),
-                new Vector2(-0.05f, 0.48f),
-            };
-
-            for (int index = 0; index < cargo.Length; index++)
-            {
-                BoxCollider proxy = cargo[index].GetComponent<BoxCollider>();
-                Vector2 offset = offsets[index];
-                Vector3 localPosition = new Vector3(
-                    profile.FrontCargoLimit - proxy.size.x * 0.5f + offset.x,
-                    profile.FloorTop + proxy.size.y * 0.5f + 0.02f,
-                    profile.CenterZ + offset.y);
-                cargo[index].transform.SetPositionAndRotation(
-                    selector.transform.TransformPoint(localPosition),
-                    selector.transform.rotation);
-            }
-        }
-
-        /// <summary>
-        /// 빈 짐칸은 구도 판단에 도움이 안 되므로, 캡처용으로만 짐을 한 층 올려 둔다.
-        /// 에디터라 물리가 돌지 않으니 계산한 자리에 그대로 놓는다.
-        /// </summary>
-        private static void LoadCargoOntoBedForPreview()
-        {
-            Transform bedAnchor = GameObject.Find("BedAnchor").transform;
-            Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
-
-            for (int i = 0; i < cargo.Length; i++)
-            {
-                float height = cargo[i].transform.localScale.y;
-                var offset = new Vector3(-1.05f + i % 3 * 1.05f, height * 0.5f + 0.02f, -0.5f + i / 3 * 1f);
-                cargo[i].transform.SetPositionAndRotation(bedAnchor.TransformPoint(offset), bedAnchor.rotation);
-            }
         }
 
         /// <summary>

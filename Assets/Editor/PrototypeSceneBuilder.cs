@@ -26,12 +26,23 @@ namespace CargoStack.EditorTools
         private const string MeshFolder = "Assets/Meshes";
         private const string CargoArtFolder = "Assets/Art/Cargo";
         private const string VehicleArtFolder = "Assets/Art/Vehicles";
-        private const string CartoonTruckPrefabPath =
-            VehicleArtFolder + "/CartoonTruck/Truck.prefab";
-        private const string LowPolyPickupPrefabPath =
-            VehicleArtFolder + "/LowPolyPickup/Prefabs/Pick Up_7.prefab";
-        private const string FreePickupPrefabPath =
-            VehicleArtFolder + "/FreePickup/Prefabs/Pickup.prefab";
+        private const string BlueTruckFolder = VehicleArtFolder + "/BlueTruck";
+        private const string BlueTruckModelPath = BlueTruckFolder + "/BlueTruck.fbx";
+        private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
+
+        // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
+        // Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤 6.2배로 맞춘다.
+        private const float BedCenterX = -1.775f;
+        private const float BedCenterZ = 0f;
+        private const float BedFloorTop = 0.11f;
+        private const float BedInsideLength = 2.19f;
+        private const float BedInsideWidth = 2.20f;
+        private const float BedWallHeight = 0.78f;
+        private const float BedFrontBarrierX = -0.63f;
+        private const float BedFrontBarrierHeight = 0.78f;
+        private const float BedFrontBarrierWidth = 2.30f;
+        private const float BedFloorThickness = 0.12f;
+        private const float BedWallThickness = 0.10f;
 
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
@@ -100,7 +111,6 @@ namespace CargoStack.EditorTools
             Material groundMaterial = EnsureColorMaterial("Ground", new Color(0.45f, 0.62f, 0.36f));
             Material truckMaterial = EnsureColorMaterial("Truck", new Color(0.26f, 0.48f, 0.62f));
             Material bedMaterial = EnsureColorMaterial("Bed", new Color(0.47f, 0.5f, 0.52f));
-            Material wheelMaterial = EnsureColorMaterial("Wheel", new Color(0.09f, 0.09f, 0.1f));
             Material playerMaterial = EnsureColorMaterial("Player", new Color(0.32f, 0.7f, 0.42f));
 
             PhysicsMaterial bedPhysics = EnsurePhysicsMaterial("BedSurface", 0.55f, 0.65f);
@@ -115,7 +125,7 @@ namespace CargoStack.EditorTools
 
             CreateLighting();
 
-            GameObject truck = BuildTruck(truckMaterial, bedMaterial, wheelMaterial, bedPhysics, out Transform bedAnchor);
+            GameObject truck = BuildTruck(truckMaterial, bedMaterial, bedPhysics, out Transform bedAnchor);
             var mover = truck.GetComponent<TruckMover>();
 
             using (var wiring = new Wiring(mover))
@@ -339,8 +349,7 @@ namespace CargoStack.EditorTools
         }
 
         private static GameObject BuildTruck(
-            Material truckMaterial, Material bedMaterial, Material wheelMaterial, PhysicsMaterial bedPhysics,
-            out Transform bedAnchor)
+            Material truckMaterial, Material bedMaterial, PhysicsMaterial bedPhysics, out Transform bedAnchor)
         {
             // 자리는 배선이 끝난 뒤 TruckMover.SnapToStart 가 경로에서 잡아 준다.
             var truck = new GameObject("Truck");
@@ -352,112 +361,85 @@ namespace CargoStack.EditorTools
 
             // 바닥 지지대. 바닥면이 정확히 -RideHeight 라서 지면 추종 높이의 기준이 된다.
             AddPart(truck.transform, "GroundSupport", new Vector3(0f, -0.6f, 0f), new Vector3(4.6f, 0.3f, 1.9f), truckMaterial, bedPhysics, false);
-            AddPart(truck.transform, "Chassis", new Vector3(0f, -0.05f, 0f), new Vector3(5.8f, 0.55f, 2.4f), truckMaterial, bedPhysics, true);
-            AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, true);
+            AddPart(truck.transform, "Chassis", new Vector3(0f, -0.05f, 0f), new Vector3(5.8f, 0.55f, 2.4f), truckMaterial, bedPhysics, false);
+            AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, false);
 
-            // 아래 다섯 콜라이더는 후보별로 새로 만들지 않는다. 선택기가 같은 Transform을
-            // 실제 메시에서 계측한 짐칸 프로필로 재배치해 물리 루트를 하나로 유지한다.
-            Transform bedFloor = AddPart(truck.transform, "BedFloor", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
-            Transform bedWallLeft = AddPart(truck.transform, "BedWall_Left", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
-            Transform bedWallRight = AddPart(truck.transform, "BedWall_Right", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
-            Transform bedWallRear = AddPart(truck.transform, "BedWall_Rear", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
-            Transform bedWallFront = AddPart(truck.transform, "BedWall_Front", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
+            float bedLengthWithWalls = BedInsideLength + BedWallThickness * 2f;
+            float wallCenterY = BedFloorTop + BedWallHeight * 0.5f;
+            float minX = BedCenterX - BedInsideLength * 0.5f;
+            float minZ = BedCenterZ - BedInsideWidth * 0.5f;
+            float maxZ = BedCenterZ + BedInsideWidth * 0.5f;
 
-            AddWheel(truck.transform, new Vector3(1.75f, -0.18f, -1.22f), wheelMaterial);
-            AddWheel(truck.transform, new Vector3(1.75f, -0.18f, 1.22f), wheelMaterial);
-            AddWheel(truck.transform, new Vector3(-1.75f, -0.18f, -1.22f), wheelMaterial);
-            AddWheel(truck.transform, new Vector3(-1.75f, -0.18f, 1.22f), wheelMaterial);
-
-            bedAnchor = CreatePoint("BedAnchor", truck.transform, Vector3.zero);
-            AddTruckVisualCandidates(
+            // 보이는 BlueTruck 메시와 겹쳐 그리지 않고, 계측한 안쪽 면에 공유 물리만 둔다.
+            AddPart(
                 truck.transform,
-                bedAnchor,
-                bedFloor,
-                bedWallLeft,
-                bedWallRight,
-                bedWallRear,
-                bedWallFront);
+                "BedFloor",
+                new Vector3(BedCenterX, BedFloorTop - BedFloorThickness * 0.5f, BedCenterZ),
+                new Vector3(bedLengthWithWalls, BedFloorThickness, BedInsideWidth),
+                bedMaterial,
+                bedPhysics,
+                false);
+            AddPart(
+                truck.transform,
+                "BedWall_Left",
+                new Vector3(BedCenterX, wallCenterY, minZ - BedWallThickness * 0.5f),
+                new Vector3(bedLengthWithWalls, BedWallHeight, BedWallThickness),
+                bedMaterial,
+                bedPhysics,
+                false);
+            AddPart(
+                truck.transform,
+                "BedWall_Right",
+                new Vector3(BedCenterX, wallCenterY, maxZ + BedWallThickness * 0.5f),
+                new Vector3(bedLengthWithWalls, BedWallHeight, BedWallThickness),
+                bedMaterial,
+                bedPhysics,
+                false);
+            AddPart(
+                truck.transform,
+                "BedWall_Rear",
+                new Vector3(minX - BedWallThickness * 0.5f, wallCenterY, BedCenterZ),
+                new Vector3(BedWallThickness, BedWallHeight, BedInsideWidth),
+                bedMaterial,
+                bedPhysics,
+                false);
+            AddPart(
+                truck.transform,
+                "BedWall_Front",
+                new Vector3(BedFrontBarrierX, BedFloorTop + BedFrontBarrierHeight * 0.5f, BedCenterZ),
+                new Vector3(BedWallThickness, BedFrontBarrierHeight, BedFrontBarrierWidth),
+                bedMaterial,
+                bedPhysics,
+                false);
+
+            bedAnchor = CreatePoint(
+                "BedAnchor",
+                truck.transform,
+                new Vector3(BedCenterX, BedFloorTop, BedCenterZ));
+            AddBlueTruckVisual(truck.transform);
             return truck;
         }
 
-        private static void AddTruckVisualCandidates(
-            Transform truck,
-            Transform bedAnchor,
-            Transform bedFloor,
-            Transform bedWallLeft,
-            Transform bedWallRight,
-            Transform bedWallRear,
-            Transform bedWallFront)
+        private static void AddBlueTruckVisual(Transform truck)
         {
-            EnsureVehicleMaterialsUseProjectShader();
-            SetTruckPrototypeRenderersVisible(truck, false);
-
-            GameObject cartoonTruck = AddVehicleVisual(
-                truck,
-                CartoonTruckPrefabPath,
-                "CartoonTruckVisual",
-                new Vector3(0f, -RideHeight, 0f),
-                Quaternion.Euler(0f, 90f, 0f),
-                Vector3.one);
-            GameObject lowPolyPickup = AddVehicleVisual(
-                truck,
-                LowPolyPickupPrefabPath,
-                "LowPolyPickupVisual",
-                new Vector3(0f, -RideHeight, 0f),
-                Quaternion.Euler(0f, 90f, 0f),
-                Vector3.one * 1.25f);
-            GameObject freePickup = AddVehicleVisual(
-                truck,
-                FreePickupPrefabPath,
-                "FreePickupVisual",
-                new Vector3(0f, -0.9f, 0f),
-                Quaternion.Euler(0f, 90f, 0f),
-                Vector3.one * 0.65f);
-            SetNamedChildActive(freePickup, "PickupAwning", false);
-
-            var selector = truck.gameObject.AddComponent<TruckVisualSelector>();
-            selector.Configure(
-                new[] { cartoonTruck, lowPolyPickup, freePickup },
-                new[]
-                {
-                    // Truck 로컬 좌표. 수평 상향 메시 삼각형과 안쪽 테두리를 계측한 보수적 적재 영역이다.
-                    new TruckBedProfile(
-                        -2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f,
-                        -0.380f, 1.803f, 2.37f),
-                    new TruckBedProfile(
-                        -2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f,
-                        -0.445f, 1.208f, 2.50f),
-                    new TruckBedProfile(
-                        -1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f,
-                        -0.545f, 1.195f, 2.10f),
-                },
-                bedAnchor,
-                bedFloor,
-                bedWallLeft,
-                bedWallRight,
-                bedWallRear,
-                bedWallFront);
-
-            selector.Select(0);
-        }
-
-        private static GameObject AddVehicleVisual(
-            Transform truck,
-            string prefabPath,
-            string visualName,
-            Vector3 localPosition,
-            Quaternion localRotation,
-            Vector3 localScale)
-        {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath)
-                ?? throw new InvalidOperationException($"트럭 후보 프리팹을 찾지 못했다: {prefabPath}");
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BlueTruckModelPath)
+                ?? throw new InvalidOperationException($"블루트럭 모델을 찾지 못했다: {BlueTruckModelPath}");
 
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-            visual.name = visualName;
+            visual.name = "BlueTruckVisual";
             visual.transform.SetParent(truck, false);
-            visual.transform.localPosition = localPosition;
-            visual.transform.localRotation = localRotation;
-            visual.transform.localScale = localScale;
+            visual.transform.localPosition = new Vector3(0f, -RideHeight, 0f);
+            // 원본은 Z-up이고 차량 앞은 -Y다. 먼저 Z-up을 Unity Y-up으로 세운 뒤
+            // 차량 앞을 게임 진행 방향인 Truck 로컬 +X로 돌린다.
+            visual.transform.localRotation =
+                Quaternion.Euler(0f, 90f, 0f) * Quaternion.Euler(-90f, 0f, 0f);
+            visual.transform.localScale = Vector3.one * 6.2f;
+
+            Material material = EnsureBlueTruckMaterial();
+            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            {
+                renderer.sharedMaterial = material;
+            }
 
             foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
             {
@@ -479,55 +461,53 @@ namespace CargoStack.EditorTools
                 GameObjectUtility.RemoveMonoBehavioursWithMissingScript(child.gameObject);
             }
 
-            return visual;
         }
 
-        private static void SetNamedChildActive(GameObject root, string childName, bool active)
-        {
-            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
-            {
-                if (child.name != childName)
-                {
-                    continue;
-                }
-
-                child.gameObject.SetActive(active);
-                return;
-            }
-
-            throw new InvalidOperationException($"{root.name}에서 {childName} 시각물을 찾지 못했다");
-        }
-
-        private static void SetTruckPrototypeRenderersVisible(Transform truck, bool visible)
-        {
-            foreach (Renderer renderer in truck.GetComponentsInChildren<Renderer>(true))
-            {
-                renderer.enabled = visible;
-            }
-        }
-
-        private static void EnsureVehicleMaterialsUseProjectShader()
+        private static Material EnsureBlueTruckMaterial()
         {
             Shader standard = Shader.Find("Standard")
-                ?? throw new InvalidOperationException("트럭 후보 재질에 쓸 Standard 셰이더를 찾지 못했다");
-
-            foreach (string guid in AssetDatabase.FindAssets("t:Material", new[] { VehicleArtFolder }))
+                ?? throw new InvalidOperationException("블루트럭 재질에 쓸 Standard 셰이더를 찾지 못했다");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(BlueTruckMaterialPath);
+            if (material == null)
             {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
-                if (material == null || material.shader == standard)
-                {
-                    continue;
-                }
-
-                material.shader = standard;
-                EditorUtility.SetDirty(material);
+                material = new Material(standard) { name = "BlueTruckMaterial" };
+                AssetDatabase.CreateAsset(material, BlueTruckMaterialPath);
             }
+
+            string normalPath = BlueTruckFolder + "/BlueTruck_Normal.jpg";
+            if (AssetImporter.GetAtPath(normalPath) is TextureImporter normalImporter
+                && normalImporter.textureType != TextureImporterType.NormalMap)
+            {
+                normalImporter.textureType = TextureImporterType.NormalMap;
+                normalImporter.SaveAndReimport();
+            }
+
+            material.shader = standard;
+            material.SetTexture(
+                "_MainTex",
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BlueTruckFolder + "/BlueTruck_BaseColor.jpg"));
+            material.SetTexture(
+                "_BumpMap",
+                AssetDatabase.LoadAssetAtPath<Texture2D>(normalPath));
+            material.SetTexture(
+                "_MetallicGlossMap",
+                AssetDatabase.LoadAssetAtPath<Texture2D>(BlueTruckFolder + "/BlueTruck_Metallic.jpg"));
+            material.SetFloat("_Metallic", 0.45f);
+            material.SetFloat("_Glossiness", 0.25f);
+            material.EnableKeyword("_NORMALMAP");
+            material.EnableKeyword("_METALLICGLOSSMAP");
+            EditorUtility.SetDirty(material);
+            return material;
         }
 
         private static Transform AddPart(
-            Transform parent, string name, Vector3 localPosition, Vector3 localScale,
-            Material material, PhysicsMaterial physics, bool visible)
+            Transform parent,
+            string name,
+            Vector3 localPosition,
+            Vector3 localScale,
+            Material material,
+            PhysicsMaterial physics,
+            bool visible)
         {
             GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
             part.name = name;
@@ -548,21 +528,6 @@ namespace CargoStack.EditorTools
             }
 
             return part.transform;
-        }
-
-        /// <summary>바퀴는 보기용이다. 지면 추종은 TruckMover 의 레이캐스트가 담당한다.</summary>
-        private static void AddWheel(Transform parent, Vector3 localPosition, Material material)
-        {
-            GameObject wheel = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
-            wheel.name = "Wheel";
-            wheel.transform.SetParent(parent, false);
-            wheel.transform.localPosition = localPosition;
-
-            // 실린더 축은 기본이 Y 다. 트럭이 +X 로 달리므로 차축은 Z 를 향해야 한다.
-            wheel.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            wheel.transform.localScale = new Vector3(0.55f, 0.28f, 0.55f);
-            wheel.GetComponent<Renderer>().sharedMaterial = material;
-            Object.DestroyImmediate(wheel.GetComponent<Collider>());
         }
 
         /// <summary>
