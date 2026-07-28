@@ -21,16 +21,27 @@ namespace CargoStack.EditorTools
 
         private const string SourceModelPath = "Assets/Art/Vehicles/BlueTruck/BlueTruck.fbx";
         private const float SourceScale = 6.2002f;
-        private const float WheelSelectionRadius = 0.56f;
-        private const float WheelSelectionHalfWidth = 0.24f;
+        // A centroid-only test previously put long body triangles into the wheel meshes.
+        // Assign a triangle to a wheel only when its complete geometry fits this envelope.
+        public const float WheelRetentionRadius = 0.535f;
+        public const float WheelRetentionHalfWidth = 0.190f;
+        private const float PivotProbeHalfWidth = 0.21f;
+        private const float PivotFitMinimumRadius = 0.47f;
+        private const float PivotFitMaximumRadius = 0.58f;
+        private const float PivotFitTolerance = 0.0045f;
+        private const float PivotRefineTolerance = 0.007f;
 
-        public static readonly Vector3[] WheelPivots =
+        // These only locate the four tyres. Generate() measures their actual circular axes.
+        private static readonly Vector3[] WheelPivotSeeds =
         {
             new Vector3(2.09f, -0.235f, -1.13f),
             new Vector3(2.09f, -0.235f, 1.13f),
             new Vector3(-1.70f, -0.235f, -1.13f),
             new Vector3(-1.70f, -0.235f, 1.13f),
         };
+
+        public static Vector3[] WheelPivots { get; private set; } =
+            (Vector3[])WheelPivotSeeds.Clone();
 
         public static readonly string[] WheelNames =
         {
@@ -67,6 +78,7 @@ namespace CargoStack.EditorTools
                 }
 
                 var sourceData = new SourceMeshData(source, sourceFilter.transform.localToWorldMatrix);
+                WheelPivots = MeasureWheelPivots(sourceData.Positions);
                 var parts = new PartMeshData[5];
                 parts[0] = new PartMeshData("BlueTruckBody", Vector3.zero, sourceData);
                 for (int wheelIndex = 0; wheelIndex < 4; wheelIndex++)
@@ -86,9 +98,10 @@ namespace CargoStack.EditorTools
                         int a = indices[index];
                         int b = indices[index + 1];
                         int c = indices[index + 2];
-                        Vector3 centroid =
-                            (sourceData.Positions[a] + sourceData.Positions[b] + sourceData.Positions[c]) / 3f;
-                        int wheelIndex = FindWheelZone(centroid);
+                        int wheelIndex = FindWheelZone(
+                            sourceData.Positions[a],
+                            sourceData.Positions[b],
+                            sourceData.Positions[c]);
                         parts[wheelIndex + 1].AddTriangle(subMesh, a, b, c);
                         assignedTriangles++;
                     }
@@ -127,24 +140,233 @@ namespace CargoStack.EditorTools
             AssetDatabase.SaveAssets();
         }
 
-        private static int FindWheelZone(Vector3 point)
+        private static int FindWheelZone(Vector3 a, Vector3 b, Vector3 c)
         {
             for (int index = 0; index < WheelPivots.Length; index++)
             {
                 Vector3 pivot = WheelPivots[index];
-                if (Mathf.Abs(point.z - pivot.z) > WheelSelectionHalfWidth)
-                {
-                    continue;
-                }
-
-                Vector2 radial = new Vector2(point.x - pivot.x, point.y - pivot.y);
-                if (radial.sqrMagnitude <= WheelSelectionRadius * WheelSelectionRadius)
+                if (IsInsideWheelEnvelope(a, pivot)
+                    && IsInsideWheelEnvelope(b, pivot)
+                    && IsInsideWheelEnvelope(c, pivot))
                 {
                     return index;
                 }
             }
 
             return -1;
+        }
+
+        private static bool IsInsideWheelEnvelope(Vector3 point, Vector3 pivot)
+        {
+            if (Mathf.Abs(point.z - pivot.z) > WheelRetentionHalfWidth)
+            {
+                return false;
+            }
+
+            Vector2 radial = new Vector2(point.x - pivot.x, point.y - pivot.y);
+            return radial.sqrMagnitude <= WheelRetentionRadius * WheelRetentionRadius;
+        }
+
+        private static Vector3[] MeasureWheelPivots(Vector3[] positions)
+        {
+            var measured = new Vector3[WheelPivotSeeds.Length];
+            for (int index = 0; index < WheelPivotSeeds.Length; index++)
+            {
+                measured[index] = MeasureWheelPivot(positions, WheelPivotSeeds[index], index);
+            }
+
+            // The left/right fits measure the same physical axle. Average them to remove
+            // sub-millimetre tessellation bias without hand-tuning a rotation centre.
+            float frontX = (measured[0].x + measured[1].x) * 0.5f;
+            float rearX = (measured[2].x + measured[3].x) * 0.5f;
+            float axleY = (measured[0].y + measured[1].y + measured[2].y + measured[3].y) * 0.25f;
+            return new[]
+            {
+                new Vector3(frontX, axleY, WheelPivotSeeds[0].z),
+                new Vector3(frontX, axleY, WheelPivotSeeds[1].z),
+                new Vector3(rearX, axleY, WheelPivotSeeds[2].z),
+                new Vector3(rearX, axleY, WheelPivotSeeds[3].z),
+            };
+        }
+
+        private static Vector3 MeasureWheelPivot(Vector3[] positions, Vector3 seed, int wheelIndex)
+        {
+            var candidates = new List<Vector2>();
+            float minimumRadiusSquared = PivotFitMinimumRadius * PivotFitMinimumRadius;
+            float maximumRadiusSquared = PivotFitMaximumRadius * PivotFitMaximumRadius;
+            for (int index = 0; index < positions.Length; index++)
+            {
+                Vector3 point = positions[index];
+                if (Mathf.Abs(point.z - seed.z) > PivotProbeHalfWidth)
+                {
+                    continue;
+                }
+
+                Vector2 radial = new Vector2(point.x - seed.x, point.y - seed.y);
+                float radiusSquared = radial.sqrMagnitude;
+                if (radiusSquared > minimumRadiusSquared && radiusSquared < maximumRadiusSquared)
+                {
+                    candidates.Add(new Vector2(point.x, point.y));
+                }
+            }
+
+            if (candidates.Count < 64)
+            {
+                throw new InvalidOperationException(
+                    $"{WheelNames[wheelIndex]} 바퀴 축을 계측할 원형 타이어 정점이 부족하다: {candidates.Count}");
+            }
+
+            Vector3 bestCircle = FindDominantCircle(candidates, seed, wheelIndex);
+            var inliers = new List<Vector2>();
+            for (int index = 0; index < candidates.Count; index++)
+            {
+                if (Mathf.Abs(Vector2.Distance(
+                        candidates[index], new Vector2(bestCircle.x, bestCircle.y)) - bestCircle.z)
+                    <= PivotRefineTolerance)
+                {
+                    inliers.Add(candidates[index]);
+                }
+            }
+
+            if (inliers.Count < 64)
+            {
+                throw new InvalidOperationException(
+                    $"{WheelNames[wheelIndex]} 바퀴 축 원형 피팅이 충분히 수렴하지 않았다: {inliers.Count}");
+            }
+
+            return FitCircle(inliers);
+        }
+
+        private static Vector3 FindDominantCircle(List<Vector2> candidates, Vector3 seed, int wheelIndex)
+        {
+            var random = new System.Random(12017 + wheelIndex);
+            Vector3 bestCircle = Vector3.zero;
+            int bestInlierCount = -1;
+            for (int iteration = 0; iteration < 800; iteration++)
+            {
+                Vector2 a = candidates[random.Next(candidates.Count)];
+                Vector2 b = candidates[random.Next(candidates.Count)];
+                Vector2 c = candidates[random.Next(candidates.Count)];
+                if (!TryGetCircle(a, b, c, out Vector3 circle)
+                    || circle.z < WheelRadius * 0.90f
+                    || circle.z > WheelRadius * 1.08f
+                    || Vector2.Distance(new Vector2(circle.x, circle.y), new Vector2(seed.x, seed.y)) > 0.08f)
+                {
+                    continue;
+                }
+
+                int inlierCount = 0;
+                for (int pointIndex = 0; pointIndex < candidates.Count; pointIndex++)
+                {
+                    if (Mathf.Abs(Vector2.Distance(
+                            candidates[pointIndex], new Vector2(circle.x, circle.y)) - circle.z)
+                        <= PivotFitTolerance)
+                    {
+                        inlierCount++;
+                    }
+                }
+
+                if (inlierCount > bestInlierCount)
+                {
+                    bestInlierCount = inlierCount;
+                    bestCircle = circle;
+                }
+            }
+
+            if (bestInlierCount < 64)
+            {
+                throw new InvalidOperationException(
+                    $"{WheelNames[wheelIndex]} 바퀴 축 원형을 찾지 못했다: {bestInlierCount}");
+            }
+
+            return bestCircle;
+        }
+
+        private static bool TryGetCircle(Vector2 a, Vector2 b, Vector2 c, out Vector3 circle)
+        {
+            double determinant = 2d * (
+                a.x * (b.y - c.y)
+                + b.x * (c.y - a.y)
+                + c.x * (a.y - b.y));
+            if (Math.Abs(determinant) < 0.000001d)
+            {
+                circle = default;
+                return false;
+            }
+
+            double aLength = a.x * a.x + a.y * a.y;
+            double bLength = b.x * b.x + b.y * b.y;
+            double cLength = c.x * c.x + c.y * c.y;
+            float x = (float)((
+                aLength * (b.y - c.y)
+                + bLength * (c.y - a.y)
+                + cLength * (a.y - b.y)) / determinant);
+            float y = (float)((
+                aLength * (c.x - b.x)
+                + bLength * (a.x - c.x)
+                + cLength * (b.x - a.x)) / determinant);
+            circle = new Vector3(x, y, Vector2.Distance(new Vector2(x, y), a));
+            return true;
+        }
+
+        private static Vector3 FitCircle(List<Vector2> points)
+        {
+            double sumX = 0d;
+            double sumY = 0d;
+            double sumXX = 0d;
+            double sumYY = 0d;
+            double sumXY = 0d;
+            double sumXXX = 0d;
+            double sumYYY = 0d;
+            double sumXYY = 0d;
+            double sumXXY = 0d;
+            foreach (Vector2 point in points)
+            {
+                double x = point.x;
+                double y = point.y;
+                double xx = x * x;
+                double yy = y * y;
+                sumX += x;
+                sumY += y;
+                sumXX += xx;
+                sumYY += yy;
+                sumXY += x * y;
+                sumXXX += xx * x;
+                sumYYY += yy * y;
+                sumXYY += x * yy;
+                sumXXY += xx * y;
+            }
+
+            // x² + y² + D*x + E*y + F = 0의 최소제곱 해.
+            double count = points.Count;
+            double determinant =
+                sumXX * (sumYY * count - sumY * sumY)
+                - sumXY * (sumXY * count - sumY * sumX)
+                + sumX * (sumXY * sumY - sumYY * sumX);
+            if (Math.Abs(determinant) < 0.000000001d)
+            {
+                throw new InvalidOperationException("바퀴 축 원형 피팅 행렬이 특이하다");
+            }
+
+            double rightX = -(sumXXX + sumXYY);
+            double rightY = -(sumXXY + sumYYY);
+            double rightConstant = -(sumXX + sumYY);
+            double d = (
+                rightX * (sumYY * count - sumY * sumY)
+                - sumXY * (rightY * count - sumY * rightConstant)
+                + sumX * (rightY * sumY - sumYY * rightConstant)) / determinant;
+            double e = (
+                sumXX * (rightY * count - sumY * rightConstant)
+                - rightX * (sumXY * count - sumY * sumX)
+                + sumX * (sumXY * rightConstant - rightY * sumX)) / determinant;
+            double f = (
+                sumXX * (sumYY * rightConstant - rightY * sumY)
+                - sumXY * (sumXY * rightConstant - rightY * sumX)
+                + rightX * (sumXY * sumY - sumYY * sumX)) / determinant;
+            float xCenter = (float)(-d * 0.5d);
+            float yCenter = (float)(-e * 0.5d);
+            float radius = (float)Math.Sqrt(xCenter * xCenter + yCenter * yCenter - f);
+            return new Vector3(xCenter, yCenter, radius);
         }
 
         private static void SaveMesh(string path, Mesh generated)

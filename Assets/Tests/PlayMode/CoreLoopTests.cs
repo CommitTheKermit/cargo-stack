@@ -16,10 +16,9 @@ namespace CargoStack.Tests
         private const float DriveTimeoutSeconds = 40f;
         private const int ExpectedCargoCount = 6;
         private const int BlueTruckV2TriangleCount = 501510;
-        private const int BlueTruckBodyTriangleCount = 438683;
-        private const float WheelSelectionRadius = 0.56f;
-        private const float WheelSelectionHalfWidth = 0.24f;
-        private const float WheelZoneCompressionTolerance = 0.005f;
+        private const float WheelRetentionRadius = 0.535f;
+        private const float WheelRetentionHalfWidth = 0.190f;
+        private const float WheelMeshTolerance = 0.007f;
         private const float BedCenterX = -1.835f;
         private const float BedFloorTop = 0.20f;
         private const float BedInsideLength = 2.29f;
@@ -35,14 +34,6 @@ namespace CargoStack.Tests
         private const float BedMinZ = -BedInsideWidth * 0.5f;
         private const float BedMaxZ = BedInsideWidth * 0.5f;
         private const float FrontCargoLimit = BedFrontBarrierX - BedWallThickness * 0.5f;
-        private static readonly Vector3[] WheelPivots =
-        {
-            new Vector3(2.09f, -0.235f, -1.13f),
-            new Vector3(2.09f, -0.235f, 1.13f),
-            new Vector3(-1.70f, -0.235f, -1.13f),
-            new Vector3(-1.70f, -0.235f, 1.13f),
-        };
-
         private GameFlow flow;
         private CargoTracker tracker;
         private TruckMover truck;
@@ -273,47 +264,78 @@ namespace CargoStack.Tests
             Transform visual = truck.transform.Find("BlueTruckVisual");
             MeshFilter bodyFilter = visual.Find("BlueTruckBody").GetComponent<MeshFilter>();
             Mesh bodyMesh = bodyFilter.sharedMesh;
-            Assert.AreEqual(BlueTruckBodyTriangleCount, bodyMesh.triangles.Length / 3,
-                "계측한 원본 바퀴 삼각형이 차체 메시에서 빠지지 않았다");
+            Assert.That(bodyMesh.triangles.Length / 3, Is.GreaterThan(400000),
+                "차체 메시가 원본 삼각형 대부분을 보존하지 못했다");
+
+            var wheelPivots = new Vector3[wheelAnimator.WheelCount];
+            for (int index = 0; index < wheelPivots.Length; index++)
+            {
+                wheelPivots[index] = wheelAnimator.GetRestLocalPosition(index);
+            }
 
             Vector3[] bodyVertices = bodyMesh.vertices;
             int[] bodyTriangles = bodyMesh.triangles;
             for (int triangle = 0; triangle < bodyTriangles.Length; triangle += 3)
             {
-                Vector3 centroid = (
-                    bodyVertices[bodyTriangles[triangle]]
-                    + bodyVertices[bodyTriangles[triangle + 1]]
-                    + bodyVertices[bodyTriangles[triangle + 2]]) / 3f;
-                Assert.IsFalse(IsInsideWheelZone(centroid),
+                Assert.IsFalse(
+                    IsInsideWheelEnvelope(bodyVertices[bodyTriangles[triangle]], wheelPivots)
+                    && IsInsideWheelEnvelope(bodyVertices[bodyTriangles[triangle + 1]], wheelPivots)
+                    && IsInsideWheelEnvelope(bodyVertices[bodyTriangles[triangle + 2]], wheelPivots),
                     $"차체에 정지한 바퀴 삼각형이 남았다: triangle {triangle / 3}");
             }
 
             int wheelTriangles = 0;
-            for (int index = 0; index < WheelPivots.Length; index++)
+            for (int index = 0; index < wheelAnimator.WheelCount; index++)
             {
                 Transform suspension = wheelAnimator.GetSuspensionRoot(index);
                 Transform spin = wheelAnimator.GetSpinRoot(index);
                 Assert.AreSame(suspension, spin.parent, $"{index}번 회전 루트가 서스펜션 아래에 없다");
-                AssertVector3(suspension.localPosition, WheelPivots[index], $"{index}번 바퀴 축");
+                AssertVector3(suspension.localPosition, wheelPivots[index], $"{index}번 바퀴 축");
 
                 MeshFilter[] wheelFilters = spin.GetComponentsInChildren<MeshFilter>(true);
                 Assert.AreEqual(1, wheelFilters.Length, $"{index}번 실제 바퀴 메시가 하나가 아니다");
                 Mesh wheelMesh = wheelFilters[0].sharedMesh;
                 int triangles = wheelMesh.triangles.Length / 3;
                 Assert.That(triangles, Is.GreaterThan(10000), $"{index}번 바퀴 메시가 비어 있다");
-                Assert.That(wheelMesh.bounds.size.z, Is.LessThanOrEqualTo(0.50f),
+                Assert.That(wheelMesh.bounds.size.z, Is.LessThanOrEqualTo(0.40f),
                     $"{index}번 바퀴 메시가 축 바깥 차체까지 포함한다");
-                Assert.That(wheelMesh.bounds.extents.x, Is.InRange(0.45f, 0.57f),
+                Assert.That(wheelMesh.bounds.extents.x, Is.InRange(0.48f, 0.54f),
                     $"{index}번 바퀴 반지름이 계측값과 다르다");
-                Assert.That(wheelMesh.bounds.extents.y, Is.InRange(0.45f, 0.57f),
+                Assert.That(wheelMesh.bounds.extents.y, Is.InRange(0.48f, 0.54f),
                     $"{index}번 바퀴 반지름이 계측값과 다르다");
+                Assert.That(Mathf.Abs(wheelMesh.bounds.center.x), Is.LessThan(WheelMeshTolerance),
+                    $"{index}번 바퀴 회전축이 X 중심에서 벗어났다");
+                Assert.That(Mathf.Abs(wheelMesh.bounds.center.y), Is.LessThan(WheelMeshTolerance),
+                    $"{index}번 바퀴 회전축이 Y 중심에서 벗어났다");
+                AssertWheelHasNoDistantFragments(wheelMesh, index);
                 wheelTriangles += triangles;
             }
 
             Assert.AreEqual(
                 BlueTruckV2TriangleCount,
-                BlueTruckBodyTriangleCount + wheelTriangles,
+                bodyMesh.triangles.Length / 3 + wheelTriangles,
                 "원본 삼각형이 차체/네 바퀴 사이에서 누락되거나 중복됐다");
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 블루트럭_바퀴_회전축은_시각_중심을_공전시키지_않는다()
+        {
+            for (int index = 0; index < wheelAnimator.WheelCount; index++)
+            {
+                Transform spin = wheelAnimator.GetSpinRoot(index);
+                MeshFilter wheelFilter = spin.GetComponentInChildren<MeshFilter>();
+                Vector3 visualCenter = wheelFilter.sharedMesh.bounds.center;
+                Quaternion originalRotation = spin.localRotation;
+                Vector3 before = wheelFilter.transform.TransformPoint(visualCenter);
+                spin.localRotation = Quaternion.AngleAxis(90f, Vector3.forward);
+                Vector3 after = wheelFilter.transform.TransformPoint(visualCenter);
+                spin.localRotation = originalRotation;
+
+                Assert.That(Vector3.Distance(before, after), Is.LessThan(WheelMeshTolerance),
+                    $"{index}번 바퀴의 시각 중심이 축 주위를 공전한다");
+            }
+
             yield break;
         }
 
@@ -975,21 +997,30 @@ namespace CargoStack.Tests
             Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.001f), $"{label} Z");
         }
 
-        private static bool IsInsideWheelZone(Vector3 point)
+        private static void AssertWheelHasNoDistantFragments(Mesh wheelMesh, int wheelIndex)
         {
-            foreach (Vector3 pivot in WheelPivots)
+            foreach (Vector3 vertex in wheelMesh.vertices)
             {
-                // Medium 메시 압축이 경계 정점을 수 mm 양자화할 수 있으므로,
-                // 분리 경계 바로 위의 삼각형은 제외하고 바퀴 영역 내부만 검사한다.
-                if (Mathf.Abs(point.z - pivot.z)
-                    > WheelSelectionHalfWidth - WheelZoneCompressionTolerance)
+                Assert.That(Mathf.Abs(vertex.z), Is.LessThanOrEqualTo(
+                        WheelRetentionHalfWidth + WheelMeshTolerance),
+                    $"{wheelIndex}번 바퀴에 축 방향으로 멀리 떨어진 차체 조각이 포함됐다");
+                Assert.That(new Vector2(vertex.x, vertex.y).magnitude, Is.LessThanOrEqualTo(
+                        WheelRetentionRadius + WheelMeshTolerance),
+                    $"{wheelIndex}번 바퀴에 회전 시 공전할 먼 차체 조각이 포함됐다");
+            }
+        }
+
+        private static bool IsInsideWheelEnvelope(Vector3 point, Vector3[] pivots)
+        {
+            foreach (Vector3 pivot in pivots)
+            {
+                if (Mathf.Abs(point.z - pivot.z) > WheelRetentionHalfWidth)
                 {
                     continue;
                 }
 
                 Vector2 radial = new Vector2(point.x - pivot.x, point.y - pivot.y);
-                float interiorRadius = WheelSelectionRadius - WheelZoneCompressionTolerance;
-                if (radial.sqrMagnitude <= interiorRadius * interiorRadius)
+                if (radial.sqrMagnitude <= WheelRetentionRadius * WheelRetentionRadius)
                 {
                     return true;
                 }
