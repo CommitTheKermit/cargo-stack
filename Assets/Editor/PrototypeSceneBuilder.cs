@@ -355,25 +355,39 @@ namespace CargoStack.EditorTools
             AddPart(truck.transform, "Chassis", new Vector3(0f, -0.05f, 0f), new Vector3(5.8f, 0.55f, 2.4f), truckMaterial, bedPhysics, true);
             AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, true);
 
-            // 짐칸 바닥은 지면에서 0.975m, 벽 상단은 1.425m 다. 플레이어 눈높이가 1.6m 이므로
-            // 옆에 서서 짐칸 안을 내려다볼 수 있다. 이 높이 관계가 깨지면 1인칭 적재가 불가능해진다.
-            AddPart(truck.transform, "BedFloor", new Vector3(-0.95f, 0.15f, 0f), new Vector3(3.45f, 0.15f, 2.25f), bedMaterial, bedPhysics, true);
-            AddPart(truck.transform, "BedWall_Left", new Vector3(-0.95f, 0.45f, -1.08f), new Vector3(3.45f, 0.45f, 0.12f), bedMaterial, bedPhysics, true);
-            AddPart(truck.transform, "BedWall_Right", new Vector3(-0.95f, 0.45f, 1.08f), new Vector3(3.45f, 0.45f, 0.12f), bedMaterial, bedPhysics, true);
-            AddPart(truck.transform, "BedWall_Rear", new Vector3(-2.62f, 0.45f, 0f), new Vector3(0.12f, 0.45f, 2.25f), bedMaterial, bedPhysics, true);
-            AddPart(truck.transform, "BedWall_Front", new Vector3(0.72f, 0.45f, 0f), new Vector3(0.12f, 0.45f, 2.25f), bedMaterial, bedPhysics, true);
+            // 아래 다섯 콜라이더는 후보별로 새로 만들지 않는다. 선택기가 같은 Transform을
+            // 실제 메시에서 계측한 짐칸 프로필로 재배치해 물리 루트를 하나로 유지한다.
+            Transform bedFloor = AddPart(truck.transform, "BedFloor", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
+            Transform bedWallLeft = AddPart(truck.transform, "BedWall_Left", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
+            Transform bedWallRight = AddPart(truck.transform, "BedWall_Right", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
+            Transform bedWallRear = AddPart(truck.transform, "BedWall_Rear", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
+            Transform bedWallFront = AddPart(truck.transform, "BedWall_Front", Vector3.zero, Vector3.one, bedMaterial, bedPhysics, true);
 
             AddWheel(truck.transform, new Vector3(1.75f, -0.18f, -1.22f), wheelMaterial);
             AddWheel(truck.transform, new Vector3(1.75f, -0.18f, 1.22f), wheelMaterial);
             AddWheel(truck.transform, new Vector3(-1.75f, -0.18f, -1.22f), wheelMaterial);
             AddWheel(truck.transform, new Vector3(-1.75f, -0.18f, 1.22f), wheelMaterial);
 
-            bedAnchor = CreatePoint("BedAnchor", truck.transform, new Vector3(-0.95f, 0.225f, 0f));
-            AddTruckVisualCandidates(truck.transform);
+            bedAnchor = CreatePoint("BedAnchor", truck.transform, Vector3.zero);
+            AddTruckVisualCandidates(
+                truck.transform,
+                bedAnchor,
+                bedFloor,
+                bedWallLeft,
+                bedWallRight,
+                bedWallRear,
+                bedWallFront);
             return truck;
         }
 
-        private static void AddTruckVisualCandidates(Transform truck)
+        private static void AddTruckVisualCandidates(
+            Transform truck,
+            Transform bedAnchor,
+            Transform bedFloor,
+            Transform bedWallLeft,
+            Transform bedWallRight,
+            Transform bedWallRear,
+            Transform bedWallFront)
         {
             EnsureVehicleMaterialsUseProjectShader();
             SetTruckPrototypeRenderersVisible(truck, false);
@@ -402,12 +416,21 @@ namespace CargoStack.EditorTools
             SetNamedChildActive(freePickup, "PickupAwning", false);
 
             var selector = truck.gameObject.AddComponent<TruckVisualSelector>();
-            using (var wiring = new Wiring(selector))
-            {
-                wiring.Refs(
-                    "candidates",
-                    new Object[] { cartoonTruck, lowPolyPickup, freePickup });
-            }
+            selector.Configure(
+                new[] { cartoonTruck, lowPolyPickup, freePickup },
+                new[]
+                {
+                    // Truck 로컬 좌표. 수평 상향 메시 삼각형과 안쪽 테두리를 계측한 보수적 적재 영역이다.
+                    new TruckBedProfile(-2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f),
+                    new TruckBedProfile(-2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f),
+                    new TruckBedProfile(-1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f),
+                },
+                bedAnchor,
+                bedFloor,
+                bedWallLeft,
+                bedWallRight,
+                bedWallRear,
+                bedWallFront);
 
             selector.Select(0);
         }
@@ -496,7 +519,7 @@ namespace CargoStack.EditorTools
             }
         }
 
-        private static void AddPart(
+        private static Transform AddPart(
             Transform parent, string name, Vector3 localPosition, Vector3 localScale,
             Material material, PhysicsMaterial physics, bool visible)
         {
@@ -517,6 +540,8 @@ namespace CargoStack.EditorTools
             {
                 Object.DestroyImmediate(renderer);
             }
+
+            return part.transform;
         }
 
         /// <summary>바퀴는 보기용이다. 지면 추종은 TruckMover 의 레이캐스트가 담당한다.</summary>

@@ -58,10 +58,74 @@ namespace CargoStack.EditorTools
             for (int index = 0; index < selector.CandidateCount; index++)
             {
                 selector.Select(index);
+                LoadRepresentativeCargoOntoActiveBed(selector);
                 CaptureDiorama($"truck-{labels[index]}", 35f, 28f, 13f);
             }
 
             selector.Select(0);
+        }
+
+        private static void LoadRepresentativeCargoOntoActiveBed(TruckVisualSelector selector)
+        {
+            TruckBedProfile profile = selector.ActiveProfile;
+            Cargo[] cargo =
+            {
+                FindCargoWithVisual("CardboardBox"),
+                FindCargoWithVisual("BlueBarrel"),
+                FindCargoWithVisual("MarbleBust"),
+            };
+            Cargo[] allCargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
+            Vector2[] offsets =
+            {
+                new Vector2(-0.48f, -0.48f),
+                new Vector2(-0.48f, 0.48f),
+                new Vector2(0.48f, 0f),
+            };
+
+            int hiddenIndex = 0;
+            foreach (Cargo item in allCargo)
+            {
+                bool isRepresentative = false;
+                foreach (Cargo representative in cargo)
+                {
+                    isRepresentative |= representative == item;
+                }
+
+                if (!isRepresentative)
+                {
+                    item.transform.position = new Vector3(0f, -20f - hiddenIndex, 0f);
+                    hiddenIndex++;
+                }
+            }
+
+            for (int index = 0; index < cargo.Length; index++)
+            {
+                BoxCollider proxy = cargo[index].GetComponent<BoxCollider>();
+                Vector2 offset = offsets[index];
+                Vector3 localPosition = new Vector3(
+                    profile.CenterX + offset.x,
+                    profile.FloorTop + proxy.size.y * 0.5f + 0.02f,
+                    profile.CenterZ + offset.y);
+                cargo[index].transform.SetPositionAndRotation(
+                    selector.transform.TransformPoint(localPosition),
+                    selector.transform.rotation);
+            }
+        }
+
+        private static Cargo FindCargoWithVisual(string visualName)
+        {
+            foreach (Cargo cargo in Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID))
+            {
+                foreach (Transform child in cargo.transform)
+                {
+                    if (child.name.Contains(visualName))
+                    {
+                        return cargo;
+                    }
+                }
+            }
+
+            throw new System.InvalidOperationException($"캡처용 화물을 찾지 못했다: {visualName}");
         }
 
         /// <summary>

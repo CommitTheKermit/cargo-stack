@@ -232,6 +232,157 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 후보마다_계측한_짐칸_프로필을_공유_콜라이더에_적용한다()
+        {
+            TruckBedProfile[] expectedProfiles =
+            {
+                new TruckBedProfile(-2.50f, 0.01f, 0.390f, 4.20f, 2.30f, 0.26f),
+                new TruckBedProfile(-2.16f, 0f, 0.460f, 3.34f, 2.30f, 0.47f),
+                new TruckBedProfile(-1.625f, 0f, 0.680f, 2.15f, 2.10f, 0.44f),
+            };
+
+            for (int index = 0; index < expectedProfiles.Length; index++)
+            {
+                visualSelector.Select(index);
+                TruckBedProfile expected = expectedProfiles[index];
+                TruckBedProfile actual = visualSelector.ActiveProfile;
+
+                AssertProfileMatches(expected, actual, $"{index + 1}번 후보");
+                AssertVector3(
+                    bedAnchor.localPosition,
+                    new Vector3(actual.CenterX, actual.FloorTop, actual.CenterZ),
+                    $"{index + 1}번 후보 BedAnchor");
+                AssertBedPartMatches(
+                    "BedFloor",
+                    new Vector3(
+                        actual.CenterX,
+                        actual.FloorTop - actual.FloorThickness * 0.5f,
+                        actual.CenterZ),
+                    new Vector3(
+                        actual.InsideLength + actual.WallThickness * 2f,
+                        actual.FloorThickness,
+                        actual.InsideWidth));
+                AssertBedPartMatches(
+                    "BedWall_Left",
+                    new Vector3(
+                        actual.CenterX,
+                        actual.FloorTop + actual.WallHeight * 0.5f,
+                        actual.MinZ - actual.WallThickness * 0.5f),
+                    new Vector3(
+                        actual.InsideLength + actual.WallThickness * 2f,
+                        actual.WallHeight,
+                        actual.WallThickness));
+                AssertBedPartMatches(
+                    "BedWall_Right",
+                    new Vector3(
+                        actual.CenterX,
+                        actual.FloorTop + actual.WallHeight * 0.5f,
+                        actual.MaxZ + actual.WallThickness * 0.5f),
+                    new Vector3(
+                        actual.InsideLength + actual.WallThickness * 2f,
+                        actual.WallHeight,
+                        actual.WallThickness));
+                AssertBedPartMatches(
+                    "BedWall_Rear",
+                    new Vector3(
+                        actual.MinX - actual.WallThickness * 0.5f,
+                        actual.FloorTop + actual.WallHeight * 0.5f,
+                        actual.CenterZ),
+                    new Vector3(
+                        actual.WallThickness,
+                        actual.WallHeight,
+                        actual.InsideWidth));
+                AssertBedPartMatches(
+                    "BedWall_Front",
+                    new Vector3(
+                        actual.MaxX + actual.WallThickness * 0.5f,
+                        actual.FloorTop + actual.WallHeight * 0.5f,
+                        actual.CenterZ),
+                    new Vector3(
+                        actual.WallThickness,
+                        actual.WallHeight,
+                        actual.InsideWidth));
+            }
+
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 후보를_바꿔도_짐칸_위_화물만_BedAnchor_상대_위치를_보존한다()
+        {
+            Cargo loadedCargo = FindCargoWithVisual("CardboardBox");
+            Cargo groundCargo = FindCargoWithVisual("FloorLamp");
+            TruckBedProfile cartoonProfile = visualSelector.ActiveProfile;
+            PlaceCargoOnActiveBed(loadedCargo, cartoonProfile, new Vector2(-0.4f, 0.25f));
+            Physics.SyncTransforms();
+
+            Vector3 relativeBefore = truck.transform.InverseTransformPoint(loadedCargo.Body.position) -
+                                     bedAnchor.localPosition;
+            Vector3 groundPositionBefore = groundCargo.Body.position;
+
+            visualSelector.Select(2);
+            yield return null;
+
+            Vector3 relativeAfter = truck.transform.InverseTransformPoint(loadedCargo.Body.position) -
+                                    bedAnchor.localPosition;
+            AssertVector3(relativeAfter, relativeBefore, "짐칸 위 화물의 BedAnchor 상대 위치");
+            Assert.That(Vector3.Distance(groundCargo.Body.position, groundPositionBefore), Is.LessThan(0.001f),
+                "짐칸 밖 화물까지 후보 전환에 따라 이동했다");
+        }
+
+        [UnityTest]
+        public IEnumerator 세_후보의_보이는_짐칸에_상자_드럼통_흉상이_관통하지_않고_지지된다()
+        {
+            Cargo[] representativeCargo =
+            {
+                FindCargoWithVisual("CardboardBox"),
+                FindCargoWithVisual("BlueBarrel"),
+                FindCargoWithVisual("MarbleBust"),
+            };
+            Vector2[] offsets =
+            {
+                new Vector2(-0.48f, -0.48f),
+                new Vector2(-0.48f, 0.48f),
+                new Vector2(0.48f, 0f),
+            };
+
+            for (int index = 0; index < visualSelector.CandidateCount; index++)
+            {
+                visualSelector.Select(index);
+                TruckBedProfile profile = visualSelector.ActiveProfile;
+
+                for (int cargoIndex = 0; cargoIndex < representativeCargo.Length; cargoIndex++)
+                {
+                    PlaceCargoOnActiveBed(representativeCargo[cargoIndex], profile, offsets[cargoIndex]);
+                }
+
+                yield return Settle(60);
+
+                float worldFloorTop = truck.transform.TransformPoint(
+                    new Vector3(profile.CenterX, profile.FloorTop, profile.CenterZ)).y;
+                foreach (Cargo cargo in representativeCargo)
+                {
+                    BoxCollider proxy = cargo.GetComponent<BoxCollider>();
+                    Bounds rendererBounds = GetRendererBounds(FindImportedVisual(cargo));
+                    Bounds localProxyBounds = GetTruckLocalBounds(proxy.bounds);
+
+                    Assert.That(proxy.bounds.min.y, Is.GreaterThanOrEqualTo(worldFloorTop - 0.035f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name} 콜라이더가 보이는 바닥을 관통했다");
+                    Assert.That(rendererBounds.min.y, Is.GreaterThanOrEqualTo(worldFloorTop - 0.035f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name} 메시가 보이는 바닥을 관통했다");
+                    Assert.That(localProxyBounds.min.x, Is.GreaterThanOrEqualTo(profile.MinX - 0.04f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name}이 짐칸 뒤 경계를 벗어났다");
+                    Assert.That(localProxyBounds.max.x, Is.LessThanOrEqualTo(profile.MaxX + 0.04f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name}이 짐칸 앞 경계를 벗어났다");
+                    Assert.That(localProxyBounds.min.z, Is.GreaterThanOrEqualTo(profile.MinZ - 0.04f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name}이 짐칸 왼쪽 경계를 벗어났다");
+                    Assert.That(localProxyBounds.max.z, Is.LessThanOrEqualTo(profile.MaxZ + 0.04f),
+                        $"{visualSelector.ActiveCandidateName}에서 {cargo.name}이 짐칸 오른쪽 경계를 벗어났다");
+                }
+            }
+        }
+
+        [UnityTest]
         public IEnumerator 가져온_화물의_미리보기는_실제_메시_실루엣을_복제한다()
         {
             Vector3 testOrigin = new Vector3(1200f, 0f, 1200f);
@@ -593,6 +744,89 @@ namespace CargoStack.Tests
             body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             cargo.transform.SetPositionAndRotation(body.position, body.rotation);
+        }
+
+        private void PlaceCargoOnActiveBed(Cargo cargo, TruckBedProfile profile, Vector2 offset)
+        {
+            BoxCollider proxy = cargo.GetComponent<BoxCollider>();
+            Rigidbody body = cargo.Body;
+            Vector3 localPosition = new Vector3(
+                profile.CenterX + offset.x,
+                profile.FloorTop + proxy.size.y * 0.5f + 0.08f,
+                profile.CenterZ + offset.y);
+            body.position = truck.transform.TransformPoint(localPosition);
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            cargo.transform.SetPositionAndRotation(body.position, body.rotation);
+        }
+
+        private void AssertBedPartMatches(string partName, Vector3 expectedPosition, Vector3 expectedScale)
+        {
+            Transform part = truck.transform.Find(partName);
+            Assert.NotNull(part, $"{partName}이 없다");
+            AssertVector3(part.localPosition, expectedPosition, $"{partName} 위치");
+            AssertVector3(part.localScale, expectedScale, $"{partName} 크기");
+            Assert.NotNull(part.GetComponent<BoxCollider>(), $"{partName}의 공유 BoxCollider가 없다");
+        }
+
+        private static void AssertProfileMatches(
+            TruckBedProfile expected,
+            TruckBedProfile actual,
+            string label)
+        {
+            Assert.That(actual.CenterX, Is.EqualTo(expected.CenterX).Within(0.001f), $"{label} 중심 X");
+            Assert.That(actual.CenterZ, Is.EqualTo(expected.CenterZ).Within(0.001f), $"{label} 중심 Z");
+            Assert.That(actual.FloorTop, Is.EqualTo(expected.FloorTop).Within(0.001f), $"{label} 바닥 높이");
+            Assert.That(actual.InsideLength, Is.EqualTo(expected.InsideLength).Within(0.001f), $"{label} 안쪽 길이");
+            Assert.That(actual.InsideWidth, Is.EqualTo(expected.InsideWidth).Within(0.001f), $"{label} 안쪽 너비");
+            Assert.That(actual.WallHeight, Is.EqualTo(expected.WallHeight).Within(0.001f), $"{label} 벽 높이");
+        }
+
+        private static void AssertVector3(Vector3 actual, Vector3 expected, string label)
+        {
+            Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.001f), $"{label} X");
+            Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.001f), $"{label} Y");
+            Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.001f), $"{label} Z");
+        }
+
+        private Bounds GetTruckLocalBounds(Bounds worldBounds)
+        {
+            Vector3 min = worldBounds.min;
+            Vector3 max = worldBounds.max;
+            Bounds localBounds = new Bounds(
+                truck.transform.InverseTransformPoint(min),
+                Vector3.zero);
+
+            for (int x = 0; x <= 1; x++)
+            {
+                for (int y = 0; y <= 1; y++)
+                {
+                    for (int z = 0; z <= 1; z++)
+                    {
+                        localBounds.Encapsulate(truck.transform.InverseTransformPoint(new Vector3(
+                            x == 0 ? min.x : max.x,
+                            y == 0 ? min.y : max.y,
+                            z == 0 ? min.z : max.z)));
+                    }
+                }
+            }
+
+            return localBounds;
+        }
+
+        private static Bounds GetRendererBounds(Transform visual)
+        {
+            Renderer[] renderers = visual.GetComponentsInChildren<Renderer>(true);
+            Assert.IsNotEmpty(renderers, $"{visual.name}에 렌더러가 없다");
+
+            Bounds bounds = renderers[0].bounds;
+            for (int index = 1; index < renderers.Length; index++)
+            {
+                bounds.Encapsulate(renderers[index].bounds);
+            }
+
+            return bounds;
         }
 
         private IEnumerator Settle(int fixedSteps)
