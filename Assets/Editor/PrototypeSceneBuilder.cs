@@ -27,7 +27,6 @@ namespace CargoStack.EditorTools
         private const string CargoArtFolder = "Assets/Art/Cargo";
         private const string VehicleArtFolder = "Assets/Art/Vehicles";
         private const string BlueTruckFolder = VehicleArtFolder + "/BlueTruck";
-        private const string BlueTruckModelPath = BlueTruckFolder + "/BlueTruck.fbx";
         private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
@@ -126,7 +125,12 @@ namespace CargoStack.EditorTools
 
             CreateLighting();
 
-            GameObject truck = BuildTruck(truckMaterial, bedMaterial, bedPhysics, out Transform bedAnchor);
+            GameObject truck = BuildTruck(
+                truckMaterial,
+                bedMaterial,
+                bedPhysics,
+                groundLayer,
+                out Transform bedAnchor);
             var mover = truck.GetComponent<TruckMover>();
 
             using (var wiring = new Wiring(mover))
@@ -350,7 +354,11 @@ namespace CargoStack.EditorTools
         }
 
         private static GameObject BuildTruck(
-            Material truckMaterial, Material bedMaterial, PhysicsMaterial bedPhysics, out Transform bedAnchor)
+            Material truckMaterial,
+            Material bedMaterial,
+            PhysicsMaterial bedPhysics,
+            int groundLayer,
+            out Transform bedAnchor)
         {
             // 자리는 배선이 끝난 뒤 TruckMover.SnapToStart 가 경로에서 잡아 준다.
             var truck = new GameObject("Truck");
@@ -417,51 +425,63 @@ namespace CargoStack.EditorTools
                 "BedAnchor",
                 truck.transform,
                 new Vector3(BedCenterX, BedFloorTop, BedCenterZ));
-            AddBlueTruckVisual(truck.transform);
+            AddBlueTruckVisual(truck.transform, groundLayer);
             return truck;
         }
 
-        private static void AddBlueTruckVisual(Transform truck)
+        private static void AddBlueTruckVisual(Transform truck, int groundLayer)
         {
-            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(BlueTruckModelPath)
-                ?? throw new InvalidOperationException($"블루트럭 모델을 찾지 못했다: {BlueTruckModelPath}");
-
-            var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab);
-            visual.name = "BlueTruckVisual";
-            visual.transform.SetParent(truck, false);
-            visual.transform.localPosition = new Vector3(0f, -RideHeight, 0f);
-            // 원본은 Z-up이고 차량 앞은 -Y다. 먼저 Z-up을 Unity Y-up으로 세운 뒤
-            // 차량 앞을 게임 진행 방향인 Truck 로컬 +X로 돌린다.
-            visual.transform.localRotation =
-                Quaternion.Euler(0f, 90f, 0f) * Quaternion.Euler(-90f, 0f, 0f);
-            visual.transform.localScale = Vector3.one * 6.2002f;
-
+            BlueTruckWheelMeshGenerator.Generate();
             Material material = EnsureBlueTruckMaterial();
-            foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+            var visual = new GameObject("BlueTruckVisual");
+            visual.transform.SetParent(truck, false);
+
+            AddGeneratedMesh(
+                visual.transform,
+                "BlueTruckBody",
+                BlueTruckWheelMeshGenerator.BodyMeshPath,
+                material);
+
+            var suspensionRoots = new Transform[4];
+            var spinRoots = new Transform[4];
+            for (int index = 0; index < suspensionRoots.Length; index++)
             {
-                renderer.sharedMaterial = material;
+                string wheelName = BlueTruckWheelMeshGenerator.WheelNames[index];
+                suspensionRoots[index] = CreatePoint(
+                    $"Wheel_{wheelName}_Suspension",
+                    visual.transform,
+                    BlueTruckWheelMeshGenerator.WheelPivots[index]);
+                spinRoots[index] = CreatePoint(
+                    $"Wheel_{wheelName}_Spin",
+                    suspensionRoots[index],
+                    Vector3.zero);
+                AddGeneratedMesh(
+                    spinRoots[index],
+                    $"Wheel_{wheelName}_Mesh",
+                    BlueTruckWheelMeshGenerator.WheelMeshPath(index),
+                    material);
             }
 
-            foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
-            {
-                Object.DestroyImmediate(collider);
-            }
+            var wheelAnimator = truck.gameObject.AddComponent<TruckWheelAnimator>();
+            wheelAnimator.Configure(
+                suspensionRoots,
+                spinRoots,
+                BlueTruckWheelMeshGenerator.WheelRadius,
+                1 << groundLayer);
+        }
 
-            foreach (Rigidbody body in visual.GetComponentsInChildren<Rigidbody>(true))
-            {
-                Object.DestroyImmediate(body);
-            }
-
-            foreach (MonoBehaviour behaviour in visual.GetComponentsInChildren<MonoBehaviour>(true))
-            {
-                Object.DestroyImmediate(behaviour);
-            }
-
-            foreach (Transform child in visual.GetComponentsInChildren<Transform>(true))
-            {
-                GameObjectUtility.RemoveMonoBehavioursWithMissingScript(child.gameObject);
-            }
-
+        private static void AddGeneratedMesh(
+            Transform parent,
+            string objectName,
+            string meshPath,
+            Material material)
+        {
+            Mesh mesh = AssetDatabase.LoadAssetAtPath<Mesh>(meshPath)
+                ?? throw new InvalidOperationException($"생성된 BlueTruck 메시를 찾지 못했다: {meshPath}");
+            var holder = new GameObject(objectName);
+            holder.transform.SetParent(parent, false);
+            holder.AddComponent<MeshFilter>().sharedMesh = mesh;
+            holder.AddComponent<MeshRenderer>().sharedMaterial = material;
         }
 
         private static Material EnsureBlueTruckMaterial()

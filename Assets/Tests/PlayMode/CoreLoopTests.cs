@@ -15,7 +15,11 @@ namespace CargoStack.Tests
     {
         private const float DriveTimeoutSeconds = 40f;
         private const int ExpectedCargoCount = 6;
-        private const int BlueTruckV2VertexCount = 370449;
+        private const int BlueTruckV2TriangleCount = 501510;
+        private const int BlueTruckBodyTriangleCount = 438683;
+        private const float WheelSelectionRadius = 0.56f;
+        private const float WheelSelectionHalfWidth = 0.24f;
+        private const float WheelZoneCompressionTolerance = 0.005f;
         private const float BedCenterX = -1.835f;
         private const float BedFloorTop = 0.20f;
         private const float BedInsideLength = 2.29f;
@@ -31,6 +35,13 @@ namespace CargoStack.Tests
         private const float BedMinZ = -BedInsideWidth * 0.5f;
         private const float BedMaxZ = BedInsideWidth * 0.5f;
         private const float FrontCargoLimit = BedFrontBarrierX - BedWallThickness * 0.5f;
+        private static readonly Vector3[] WheelPivots =
+        {
+            new Vector3(2.09f, -0.235f, -1.13f),
+            new Vector3(2.09f, -0.235f, 1.13f),
+            new Vector3(-1.70f, -0.235f, -1.13f),
+            new Vector3(-1.70f, -0.235f, 1.13f),
+        };
 
         private GameFlow flow;
         private CargoTracker tracker;
@@ -38,6 +49,7 @@ namespace CargoStack.Tests
         private PlayerController player;
         private PlayerCargoInteractor interactor;
         private Transform bedAnchor;
+        private TruckWheelAnimator wheelAnimator;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -50,6 +62,7 @@ namespace CargoStack.Tests
             player = Object.FindFirstObjectByType<PlayerController>();
             interactor = Object.FindFirstObjectByType<PlayerCargoInteractor>();
             bedAnchor = GameObject.Find("BedAnchor").transform;
+            wheelAnimator = truck.GetComponent<TruckWheelAnimator>();
 
             Assert.NotNull(flow, "씬에 GameFlow 가 없다");
             Assert.NotNull(tracker, "씬에 CargoTracker 가 없다");
@@ -57,6 +70,7 @@ namespace CargoStack.Tests
             Assert.NotNull(player, "씬에 PlayerController 가 없다");
             Assert.NotNull(interactor, "씬에 PlayerCargoInteractor 가 없다");
             Assert.NotNull(bedAnchor, "씬에 BedAnchor 가 없다");
+            Assert.NotNull(wheelAnimator, "Truck 루트에 바퀴 시각 애니메이터가 없다");
 
             yield return null;
         }
@@ -165,9 +179,27 @@ namespace CargoStack.Tests
             Assert.IsEmpty(visual.GetComponentsInChildren<MonoBehaviour>(true),
                 "BlueTruck 시각물에 외부 차량 제어 스크립트가 남아 있다");
             MeshFilter[] meshFilters = visual.GetComponentsInChildren<MeshFilter>(true);
-            Assert.AreEqual(1, meshFilters.Length, "v2 BlueTruck 메시가 한 번만 인스턴스화되지 않았다");
-            Assert.AreEqual(BlueTruckV2VertexCount, meshFilters[0].sharedMesh.vertexCount,
-                "v1 메시가 남았거나 v2 BlueTruck FBX가 아닌 파일을 참조한다");
+            Assert.AreEqual(5, meshFilters.Length, "차체와 실제 바퀴 네 개 이외의 메시가 남아 있다");
+            Assert.AreEqual(4, wheelAnimator.WheelCount, "실제 바퀴 리그가 정확히 네 개가 아니다");
+
+            int totalTriangles = 0;
+            foreach (MeshFilter meshFilter in meshFilters)
+            {
+                totalTriangles += meshFilter.sharedMesh.triangles.Length / 3;
+                Assert.AreEqual(1, meshFilter.sharedMesh.subMeshCount,
+                    $"{meshFilter.name}의 원본 submesh 구성이 보존되지 않았다");
+                Assert.AreEqual(
+                    meshFilter.sharedMesh.vertexCount,
+                    meshFilter.sharedMesh.normals.Length,
+                    $"{meshFilter.name}의 원본 normal이 보존되지 않았다");
+                Assert.AreEqual(
+                    meshFilter.sharedMesh.vertexCount,
+                    meshFilter.sharedMesh.uv.Length,
+                    $"{meshFilter.name}의 원본 UV가 보존되지 않았다");
+            }
+
+            Assert.AreEqual(BlueTruckV2TriangleCount, totalTriangles,
+                "원본 BlueTruck 삼각형이 누락되거나 중복 배정됐다");
 
             Assert.AreEqual(1, Object.FindObjectsByType<TruckMover>(FindObjectsSortMode.None).Length,
                 "씬에 게임플레이 TruckMover가 여러 개다");
@@ -223,10 +255,8 @@ namespace CargoStack.Tests
                 new Vector3(BedWallThickness, BedFrontBarrierHeight, BedFrontBarrierWidth));
 
             Transform visual = truck.transform.Find("BlueTruckVisual");
-            AssertVector3(visual.localPosition, new Vector3(0f, -0.75f, 0f), "BlueTruck 위치");
-            AssertVector3(visual.localScale, Vector3.one * 6.2002f, "BlueTruck 크기");
-            Assert.That(Vector3.Dot(-visual.up, truck.transform.right), Is.GreaterThan(0.99f),
-                "BlueTruck 앞 방향이 주행 방향 +X와 일치하지 않는다");
+            AssertVector3(visual.localPosition, Vector3.zero, "BlueTruck 파생 시각물 위치");
+            AssertVector3(visual.localScale, Vector3.one, "BlueTruck 파생 시각물 크기");
 
             Bounds rendererBounds = GetRendererBounds(visual);
             Bounds localRendererBounds = GetTruckLocalBounds(rendererBounds);
@@ -235,6 +265,157 @@ namespace CargoStack.Tests
             Assert.That(localRendererBounds.max.x, Is.GreaterThan(3f), "BlueTruck 앞부분이 +X를 향하지 않는다");
             Assert.That(localRendererBounds.min.x, Is.LessThan(-3f), "BlueTruck 전체 길이가 계측값과 다르다");
             yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 블루트럭_원본_바퀴는_차체에서_빠져_네_리그에_한번씩만_배정된다()
+        {
+            Transform visual = truck.transform.Find("BlueTruckVisual");
+            MeshFilter bodyFilter = visual.Find("BlueTruckBody").GetComponent<MeshFilter>();
+            Mesh bodyMesh = bodyFilter.sharedMesh;
+            Assert.AreEqual(BlueTruckBodyTriangleCount, bodyMesh.triangles.Length / 3,
+                "계측한 원본 바퀴 삼각형이 차체 메시에서 빠지지 않았다");
+
+            Vector3[] bodyVertices = bodyMesh.vertices;
+            int[] bodyTriangles = bodyMesh.triangles;
+            for (int triangle = 0; triangle < bodyTriangles.Length; triangle += 3)
+            {
+                Vector3 centroid = (
+                    bodyVertices[bodyTriangles[triangle]]
+                    + bodyVertices[bodyTriangles[triangle + 1]]
+                    + bodyVertices[bodyTriangles[triangle + 2]]) / 3f;
+                Assert.IsFalse(IsInsideWheelZone(centroid),
+                    $"차체에 정지한 바퀴 삼각형이 남았다: triangle {triangle / 3}");
+            }
+
+            int wheelTriangles = 0;
+            for (int index = 0; index < WheelPivots.Length; index++)
+            {
+                Transform suspension = wheelAnimator.GetSuspensionRoot(index);
+                Transform spin = wheelAnimator.GetSpinRoot(index);
+                Assert.AreSame(suspension, spin.parent, $"{index}번 회전 루트가 서스펜션 아래에 없다");
+                AssertVector3(suspension.localPosition, WheelPivots[index], $"{index}번 바퀴 축");
+
+                MeshFilter[] wheelFilters = spin.GetComponentsInChildren<MeshFilter>(true);
+                Assert.AreEqual(1, wheelFilters.Length, $"{index}번 실제 바퀴 메시가 하나가 아니다");
+                Mesh wheelMesh = wheelFilters[0].sharedMesh;
+                int triangles = wheelMesh.triangles.Length / 3;
+                Assert.That(triangles, Is.GreaterThan(10000), $"{index}번 바퀴 메시가 비어 있다");
+                Assert.That(wheelMesh.bounds.size.z, Is.LessThanOrEqualTo(0.50f),
+                    $"{index}번 바퀴 메시가 축 바깥 차체까지 포함한다");
+                Assert.That(wheelMesh.bounds.extents.x, Is.InRange(0.45f, 0.57f),
+                    $"{index}번 바퀴 반지름이 계측값과 다르다");
+                Assert.That(wheelMesh.bounds.extents.y, Is.InRange(0.45f, 0.57f),
+                    $"{index}번 바퀴 반지름이 계측값과 다르다");
+                wheelTriangles += triangles;
+            }
+
+            Assert.AreEqual(
+                BlueTruckV2TriangleCount,
+                BlueTruckBodyTriangleCount + wheelTriangles,
+                "원본 삼각형이 차체/네 바퀴 사이에서 누락되거나 중복됐다");
+            yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator 트럭의_실제_이동량만큼_원본_바퀴가_전진과_후진으로_회전한다()
+        {
+            Transform spin = wheelAnimator.GetSpinRoot(0);
+            MeshFilter wheelFilter = spin.GetComponentInChildren<MeshFilter>();
+            Vector3[] vertices = wheelFilter.sharedMesh.vertices;
+            int sampleIndex = 0;
+            float farthest = 0f;
+            for (int index = 0; index < vertices.Length; index++)
+            {
+                float radial = new Vector2(vertices[index].x, vertices[index].y).sqrMagnitude;
+                if (radial > farthest)
+                {
+                    farthest = radial;
+                    sampleIndex = index;
+                }
+            }
+
+            Quaternion initialSpin = spin.localRotation;
+            Vector3 initialVertexInTruck = truck.transform.InverseTransformPoint(
+                wheelFilter.transform.TransformPoint(vertices[sampleIndex]));
+            Vector3 startPosition = truck.transform.position;
+            Vector3 displacement = truck.transform.right * 0.50f;
+
+            truck.transform.position = startPosition + displacement;
+            Physics.SyncTransforms();
+            yield return null;
+
+            float expectedDegrees = displacement.magnitude / wheelAnimator.WheelRadius * Mathf.Rad2Deg;
+            float forwardDegrees = Vector3.SignedAngle(
+                initialSpin * Vector3.up,
+                spin.localRotation * Vector3.up,
+                Vector3.forward);
+            Vector3 forwardVertexInTruck = truck.transform.InverseTransformPoint(
+                wheelFilter.transform.TransformPoint(vertices[sampleIndex]));
+            Assert.That(forwardDegrees, Is.EqualTo(-expectedDegrees).Within(2f),
+                "전진한 실제 거리와 바퀴 회전량이 맞지 않는다");
+            Assert.That(Vector3.Distance(initialVertexInTruck, forwardVertexInTruck), Is.GreaterThan(0.25f),
+                "회전 루트가 아니라 정지한 복제 바퀴를 보고 있다");
+
+            truck.transform.position = startPosition;
+            Physics.SyncTransforms();
+            yield return null;
+
+            Vector3 restoredVertexInTruck = truck.transform.InverseTransformPoint(
+                wheelFilter.transform.TransformPoint(vertices[sampleIndex]));
+            Assert.That(Quaternion.Angle(initialSpin, spin.localRotation), Is.LessThan(2f),
+                "후진 거리만큼 바퀴 회전이 되감기지 않았다");
+            Assert.That(Vector3.Distance(initialVertexInTruck, restoredVertexInTruck), Is.LessThan(0.03f),
+                "후진 뒤 실제 바퀴의 정점이 원래 위치로 돌아오지 않았다");
+        }
+
+        [UnityTest]
+        public IEnumerator 한쪽_바퀴만_단차를_밟으면_서스펜션이_제한내에서_압축되고_부드럽게_복원된다()
+        {
+            yield return new WaitForSeconds(0.30f);
+
+            Transform steppedWheel = wheelAnimator.GetSuspensionRoot(0);
+            Transform oppositeWheel = wheelAnimator.GetSuspensionRoot(1);
+            Vector3 steppedRest = wheelAnimator.GetRestLocalPosition(0);
+            Vector3 oppositeRest = wheelAnimator.GetRestLocalPosition(1);
+            Assert.That(Mathf.Abs(steppedWheel.localPosition.y - steppedRest.y), Is.LessThan(0.015f),
+                "평지에서 바퀴가 기본 축 위치에 있지 않다");
+            Assert.That(Mathf.Abs(oppositeWheel.localPosition.y - oppositeRest.y), Is.LessThan(0.015f),
+                "평지에서 반대편 바퀴가 기본 축 위치에 있지 않다");
+
+            var step = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            step.name = "Wheel Suspension Test Step";
+            step.layer = LayerMask.NameToLayer("Ground");
+            step.transform.SetPositionAndRotation(
+                truck.transform.TransformPoint(steppedRest - Vector3.up * wheelAnimator.WheelRadius)
+                    + truck.transform.up * 0.18f,
+                truck.transform.rotation);
+            step.transform.localScale = new Vector3(0.72f, 0.36f, 0.72f);
+            Physics.SyncTransforms();
+
+            yield return new WaitForSeconds(0.35f);
+
+            float compressedOffset = steppedWheel.localPosition.y - steppedRest.y;
+            float oppositeOffset = oppositeWheel.localPosition.y - oppositeRest.y;
+            Assert.That(compressedOffset, Is.GreaterThan(0.12f),
+                "단차를 밟은 바퀴의 서스펜션이 충분히 압축되지 않았다");
+            Assert.That(compressedOffset, Is.LessThanOrEqualTo(wheelAnimator.CompressionTravel + 0.002f),
+                "서스펜션이 설정된 압축 한계를 넘었다");
+            Assert.That(Mathf.Abs(oppositeOffset), Is.LessThan(0.025f),
+                "단차를 밟지 않은 반대편 바퀴까지 같이 움직였다");
+
+            Object.Destroy(step);
+            yield return null;
+            float firstRecoveryOffset = steppedWheel.localPosition.y - steppedRest.y;
+            Assert.That(firstRecoveryOffset, Is.GreaterThan(0.03f),
+                "단차가 사라진 한 프레임 만에 서스펜션이 순간이동했다");
+            Assert.That(firstRecoveryOffset, Is.LessThanOrEqualTo(compressedOffset + 0.002f),
+                "단차 제거 뒤 서스펜션이 반대 방향으로 더 압축됐다");
+
+            yield return new WaitForSeconds(0.65f);
+
+            Assert.That(Mathf.Abs(steppedWheel.localPosition.y - steppedRest.y), Is.LessThan(0.015f),
+                "서스펜션이 평지의 기본 축 위치로 복원되지 않았다");
         }
 
         [UnityTest]
@@ -792,6 +973,29 @@ namespace CargoStack.Tests
             Assert.That(actual.x, Is.EqualTo(expected.x).Within(0.001f), $"{label} X");
             Assert.That(actual.y, Is.EqualTo(expected.y).Within(0.001f), $"{label} Y");
             Assert.That(actual.z, Is.EqualTo(expected.z).Within(0.001f), $"{label} Z");
+        }
+
+        private static bool IsInsideWheelZone(Vector3 point)
+        {
+            foreach (Vector3 pivot in WheelPivots)
+            {
+                // Medium 메시 압축이 경계 정점을 수 mm 양자화할 수 있으므로,
+                // 분리 경계 바로 위의 삼각형은 제외하고 바퀴 영역 내부만 검사한다.
+                if (Mathf.Abs(point.z - pivot.z)
+                    > WheelSelectionHalfWidth - WheelZoneCompressionTolerance)
+                {
+                    continue;
+                }
+
+                Vector2 radial = new Vector2(point.x - pivot.x, point.y - pivot.y);
+                float interiorRadius = WheelSelectionRadius - WheelZoneCompressionTolerance;
+                if (radial.sqrMagnitude <= interiorRadius * interiorRadius)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private Bounds GetTruckLocalBounds(Bounds worldBounds)

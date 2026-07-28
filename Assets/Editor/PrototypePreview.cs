@@ -26,6 +26,7 @@ namespace CargoStack.EditorTools
             // 1인칭은 게임 시작 그대로(짐이 바닥에 널린 상태)를 찍어야 첫인상을 볼 수 있다.
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person.png");
             CaptureDiorama("final-blue-truck-v2-empty", 35f, 28f, 13f);
+            CaptureWheelStates();
 
             LoadRepresentativeCargoOntoBed();
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person-loaded.png");
@@ -44,6 +45,50 @@ namespace CargoStack.EditorTools
             CaptureRouteFraming("route-profile", 4f, 0f);
 
             Debug.Log($"[CargoStack] 프리뷰 저장 완료: {OutputFolder}");
+        }
+
+        private static void CaptureWheelStates()
+        {
+            TruckWheelAnimator wheelAnimator = Object.FindFirstObjectByType<TruckWheelAnimator>();
+            if (wheelAnimator == null || wheelAnimator.WheelCount != 4)
+            {
+                Debug.LogError("[CargoStack] 네 바퀴 시각 리그를 찾지 못했다");
+                return;
+            }
+
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
+            foreach (Cargo item in cargo)
+            {
+                item.gameObject.SetActive(false);
+            }
+
+            CaptureDiorama("wheel-start", 0f, 10f, 10f);
+            for (int index = 0; index < wheelAnimator.WheelCount; index++)
+            {
+                wheelAnimator.GetSpinRoot(index).localRotation =
+                    Quaternion.AngleAxis(-75f, Vector3.forward);
+            }
+
+            CaptureDiorama("wheel-forward", 0f, 10f, 10f);
+
+            // yaw 0 측면 샷에서 카메라 쪽(-Z) 바퀴가 실제로 올라가는 모습을 남긴다.
+            Transform compressed = wheelAnimator.GetSuspensionRoot(0);
+            compressed.localPosition =
+                wheelAnimator.GetRestLocalPosition(0) + Vector3.up * 0.16f;
+            CaptureDiorama("wheel-compressed", 0f, 10f, 10f);
+
+            for (int index = 0; index < wheelAnimator.WheelCount; index++)
+            {
+                wheelAnimator.GetSpinRoot(index).localRotation = Quaternion.identity;
+                wheelAnimator.GetSuspensionRoot(index).localPosition =
+                    wheelAnimator.GetRestLocalPosition(index);
+            }
+
+            CaptureDiorama("wheel-restored", 0f, 10f, 10f);
+            foreach (Cargo item in cargo)
+            {
+                item.gameObject.SetActive(true);
+            }
         }
 
         private static void LoadRepresentativeCargoOntoBed()
