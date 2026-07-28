@@ -25,11 +25,11 @@ namespace CargoStack.EditorTools
 
             // 1인칭은 게임 시작 그대로(짐이 바닥에 널린 상태)를 찍어야 첫인상을 볼 수 있다.
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person.png");
-            CaptureDiorama("final-blue-truck-empty", 35f, 28f, 13f);
+            CaptureDiorama("final-blue-truck-v2-empty", 35f, 28f, 13f);
 
             LoadRepresentativeCargoOntoBed();
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person-loaded.png");
-            CaptureDiorama("final-blue-truck-loaded", 35f, 28f, 13f);
+            CaptureDiorama("final-blue-truck-v2-loaded", 35f, 28f, 13f);
 
             // 자유 시점이 실제로 원하는 각도까지 도는지 대표 네 각도로 확인한다.
             // 트럭이 +X 로 달리므로 yaw 0 이 옆면, yaw 90 이 뒷면이다.

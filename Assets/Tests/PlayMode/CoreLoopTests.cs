@@ -15,15 +15,17 @@ namespace CargoStack.Tests
     {
         private const float DriveTimeoutSeconds = 40f;
         private const int ExpectedCargoCount = 6;
-        private const float BedCenterX = -1.775f;
-        private const float BedFloorTop = 0.11f;
-        private const float BedInsideLength = 2.19f;
-        private const float BedInsideWidth = 2.20f;
-        private const float BedWallHeight = 0.78f;
-        private const float BedFrontBarrierX = -0.63f;
-        private const float BedFrontBarrierWidth = 2.30f;
+        private const int BlueTruckV2VertexCount = 370449;
+        private const float BedCenterX = -1.835f;
+        private const float BedFloorTop = 0.20f;
+        private const float BedInsideLength = 2.29f;
+        private const float BedInsideWidth = 2.26f;
+        private const float BedWallHeight = 0.70f;
+        private const float BedFrontBarrierX = -0.64f;
+        private const float BedFrontBarrierHeight = 0.68f;
+        private const float BedFrontBarrierWidth = 2.26f;
         private const float BedFloorThickness = 0.12f;
-        private const float BedWallThickness = 0.10f;
+        private const float BedWallThickness = 0.12f;
         private const float BedMinX = BedCenterX - BedInsideLength * 0.5f;
         private const float BedMaxX = BedCenterX + BedInsideLength * 0.5f;
         private const float BedMinZ = -BedInsideWidth * 0.5f;
@@ -162,6 +164,10 @@ namespace CargoStack.Tests
                 "BlueTruck 시각물에 공유 물리와 겹치는 Rigidbody가 남아 있다");
             Assert.IsEmpty(visual.GetComponentsInChildren<MonoBehaviour>(true),
                 "BlueTruck 시각물에 외부 차량 제어 스크립트가 남아 있다");
+            MeshFilter[] meshFilters = visual.GetComponentsInChildren<MeshFilter>(true);
+            Assert.AreEqual(1, meshFilters.Length, "v2 BlueTruck 메시가 한 번만 인스턴스화되지 않았다");
+            Assert.AreEqual(BlueTruckV2VertexCount, meshFilters[0].sharedMesh.vertexCount,
+                "v1 메시가 남았거나 v2 BlueTruck FBX가 아닌 파일을 참조한다");
 
             Assert.AreEqual(1, Object.FindObjectsByType<TruckMover>(FindObjectsSortMode.None).Length,
                 "씬에 게임플레이 TruckMover가 여러 개다");
@@ -213,12 +219,12 @@ namespace CargoStack.Tests
                 new Vector3(BedWallThickness, BedWallHeight, BedInsideWidth));
             AssertBedPartMatches(
                 "BedWall_Front",
-                new Vector3(BedFrontBarrierX, BedFloorTop + BedWallHeight * 0.5f, 0f),
-                new Vector3(BedWallThickness, BedWallHeight, BedFrontBarrierWidth));
+                new Vector3(BedFrontBarrierX, BedFloorTop + BedFrontBarrierHeight * 0.5f, 0f),
+                new Vector3(BedWallThickness, BedFrontBarrierHeight, BedFrontBarrierWidth));
 
             Transform visual = truck.transform.Find("BlueTruckVisual");
             AssertVector3(visual.localPosition, new Vector3(0f, -0.75f, 0f), "BlueTruck 위치");
-            AssertVector3(visual.localScale, Vector3.one * 6.2f, "BlueTruck 크기");
+            AssertVector3(visual.localScale, Vector3.one * 6.2002f, "BlueTruck 크기");
             Assert.That(Vector3.Dot(-visual.up, truck.transform.right), Is.GreaterThan(0.99f),
                 "BlueTruck 앞 방향이 주행 방향 +X와 일치하지 않는다");
 
@@ -325,6 +331,67 @@ namespace CargoStack.Tests
                 "화물 메시가 앞 격벽을 뚫고 캐빈에 들어갔다");
             Assert.That(proxy.bounds.min.y, Is.GreaterThanOrEqualTo(worldFloorTop - 0.04f),
                 "앞 격벽 충돌 뒤 화물이 바닥 아래로 빠졌다");
+        }
+
+        [UnityTest]
+        public IEnumerator 블루트럭_측면과_후면_벽은_고속_화물의_탈출을_막는다()
+        {
+            Cargo impactCargo = FindCargoWithVisual("CardboardBox");
+            foreach (Cargo cargo in GetCargo())
+            {
+                if (cargo != impactCargo)
+                {
+                    cargo.gameObject.SetActive(false);
+                }
+            }
+
+            BoxCollider proxy = impactCargo.GetComponent<BoxCollider>();
+            Rigidbody body = impactCargo.Body;
+            body.constraints = RigidbodyConstraints.FreezeRotation;
+
+            body.position = truck.transform.TransformPoint(new Vector3(
+                BedMinX + proxy.size.x * 0.5f + 0.40f,
+                BedFloorTop + proxy.size.y * 0.5f + 0.04f,
+                0f));
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = -truck.transform.right * 10f;
+            body.angularVelocity = Vector3.zero;
+            impactCargo.transform.SetPositionAndRotation(body.position, body.rotation);
+            Physics.SyncTransforms();
+
+            float furthestRearX = float.PositiveInfinity;
+            for (int fixedStep = 0; fixedStep < 60; fixedStep++)
+            {
+                yield return new WaitForFixedUpdate();
+                furthestRearX = Mathf.Min(furthestRearX, GetTruckLocalBounds(proxy.bounds).min.x);
+            }
+
+            Assert.That(furthestRearX, Is.LessThan(BedMinX + 0.12f),
+                "시험 화물이 후면 벽까지 도달하지 않았다");
+            Assert.That(furthestRearX, Is.GreaterThanOrEqualTo(BedMinX - 0.04f),
+                "화물이 후면 벽을 뚫고 짐칸 밖으로 나갔다");
+
+            body.position = truck.transform.TransformPoint(new Vector3(
+                BedCenterX,
+                BedFloorTop + proxy.size.y * 0.5f + 0.04f,
+                BedMaxZ - proxy.size.z * 0.5f - 0.40f));
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = truck.transform.forward * 10f;
+            body.angularVelocity = Vector3.zero;
+            impactCargo.transform.SetPositionAndRotation(body.position, body.rotation);
+            Physics.SyncTransforms();
+
+            float furthestSideZ = float.NegativeInfinity;
+            for (int fixedStep = 0; fixedStep < 60; fixedStep++)
+            {
+                yield return new WaitForFixedUpdate();
+                furthestSideZ = Mathf.Max(furthestSideZ, GetTruckLocalBounds(proxy.bounds).max.z);
+            }
+
+            Assert.That(furthestSideZ, Is.GreaterThan(BedMaxZ - 0.12f),
+                "시험 화물이 측면 벽까지 도달하지 않았다");
+            Assert.That(furthestSideZ, Is.LessThanOrEqualTo(BedMaxZ + 0.04f),
+                "화물이 측면 벽을 뚫고 짐칸 밖으로 나갔다");
         }
 
         [UnityTest]

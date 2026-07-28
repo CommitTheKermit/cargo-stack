@@ -31,18 +31,19 @@ namespace CargoStack.EditorTools
         private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
-        // Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤 6.2배로 맞춘다.
-        private const float BedCenterX = -1.775f;
+        // v2 Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤
+        // 원본 길이 0.999970m가 게임 규격 6.2m가 되도록 6.2002배로 맞춘다.
+        private const float BedCenterX = -1.835f;
         private const float BedCenterZ = 0f;
-        private const float BedFloorTop = 0.11f;
-        private const float BedInsideLength = 2.19f;
-        private const float BedInsideWidth = 2.20f;
-        private const float BedWallHeight = 0.78f;
-        private const float BedFrontBarrierX = -0.63f;
-        private const float BedFrontBarrierHeight = 0.78f;
-        private const float BedFrontBarrierWidth = 2.30f;
+        private const float BedFloorTop = 0.20f;
+        private const float BedInsideLength = 2.29f;
+        private const float BedInsideWidth = 2.26f;
+        private const float BedWallHeight = 0.70f;
+        private const float BedFrontBarrierX = -0.64f;
+        private const float BedFrontBarrierHeight = 0.68f;
+        private const float BedFrontBarrierWidth = 2.26f;
         private const float BedFloorThickness = 0.12f;
-        private const float BedWallThickness = 0.10f;
+        private const float BedWallThickness = 0.12f;
 
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
@@ -433,7 +434,7 @@ namespace CargoStack.EditorTools
             // 차량 앞을 게임 진행 방향인 Truck 로컬 +X로 돌린다.
             visual.transform.localRotation =
                 Quaternion.Euler(0f, 90f, 0f) * Quaternion.Euler(-90f, 0f, 0f);
-            visual.transform.localScale = Vector3.one * 6.2f;
+            visual.transform.localScale = Vector3.one * 6.2002f;
 
             Material material = EnsureBlueTruckMaterial();
             foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
@@ -494,6 +495,7 @@ namespace CargoStack.EditorTools
                 AssetDatabase.LoadAssetAtPath<Texture2D>(BlueTruckFolder + "/BlueTruck_Metallic.jpg"));
             material.SetFloat("_Metallic", 0.45f);
             material.SetFloat("_Glossiness", 0.25f);
+            material.SetFloat("_GlossMapScale", 0.25f);
             material.EnableKeyword("_NORMALMAP");
             material.EnableKeyword("_METALLICGLOSSMAP");
             EditorUtility.SetDirty(material);
