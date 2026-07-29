@@ -101,6 +101,23 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 트럭과_모든_화물에_프로토타입_소리가_배선되어_있다()
+        {
+            TruckEngineAudio engineAudio = truck.GetComponent<TruckEngineAudio>();
+            Assert.NotNull(engineAudio, "Truck에 엔진 오디오가 없다");
+            Assert.IsTrue(engineAudio.HasClip, "엔진 루프 클립이 배선되지 않았다");
+
+            foreach (Cargo item in GetCargo())
+            {
+                CargoImpactAudio impactAudio = item.GetComponent<CargoImpactAudio>();
+                Assert.NotNull(impactAudio, $"{item.name}에 충돌 오디오가 없다");
+                Assert.AreEqual(3, impactAudio.ClipCount, $"{item.name}의 충돌음 변형 수가 다르다");
+            }
+
+            yield break;
+        }
+
+        [UnityTest]
         public IEnumerator 플레이어가_손_닿는_화물을_집고_다시_놓을_수_있다()
         {
             Cargo target = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID)[0];
@@ -792,16 +809,22 @@ namespace CargoStack.Tests
         {
             Camera firstPerson = GameObject.Find("First Person Camera").GetComponent<Camera>();
             Camera diorama = GameObject.Find("Diorama Camera").GetComponent<Camera>();
+            AudioListener firstPersonListener = firstPerson.GetComponent<AudioListener>();
+            AudioListener dioramaListener = diorama.GetComponent<AudioListener>();
             GameObject playerObject = player.gameObject;
 
             Assert.IsTrue(firstPerson.enabled, "적재 중인데 1인칭 카메라가 꺼져 있다");
             Assert.IsFalse(diorama.enabled, "적재 중인데 디오라마 카메라가 켜져 있다");
+            Assert.IsTrue(firstPersonListener.enabled, "적재 중인데 1인칭 AudioListener가 꺼져 있다");
+            Assert.IsFalse(dioramaListener.enabled, "적재 중인데 디오라마 AudioListener가 켜져 있다");
 
             flow.StartDriving();
             yield return null;
 
             Assert.IsFalse(firstPerson.enabled, "출발했는데 1인칭 카메라가 켜져 있다");
             Assert.IsTrue(diorama.enabled, "디오라마 시점으로 전환되지 않았다");
+            Assert.IsFalse(firstPersonListener.enabled, "출발했는데 1인칭 AudioListener가 켜져 있다");
+            Assert.IsTrue(dioramaListener.enabled, "디오라마 AudioListener로 전환되지 않았다");
             Assert.IsFalse(playerObject.activeSelf, "출발했는데 플레이어가 화면에 남아 있다");
         }
 

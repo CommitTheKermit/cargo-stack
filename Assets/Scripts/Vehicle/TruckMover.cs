@@ -48,6 +48,9 @@ namespace CargoStack
 
         public float Speed { get; private set; }
 
+        /// <summary>최고 속도 대비 현재 속도. 시각·음향 피드백에서 사용한다.</summary>
+        public float Speed01 => maxSpeed > 0f ? Mathf.Clamp01(Speed / maxSpeed) : 0f;
+
         /// <summary>주행 진행도 0~1. HUD 와 속도 프로필이 같은 값을 본다.</summary>
         public float Progress => Mathf.InverseLerp(startDistance, goalDistance, travelled);
 

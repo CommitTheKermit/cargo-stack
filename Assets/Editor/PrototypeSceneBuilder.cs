@@ -25,6 +25,7 @@ namespace CargoStack.EditorTools
         private const string MeshFolder = "Assets/Meshes";
         private const string CargoArtFolder = "Assets/Art/Cargo";
         private const string VehicleArtFolder = "Assets/Art/Vehicles";
+        private const string PrototypeAudioFolder = "Assets/Audio/Prototype";
         private const string BlueTruckFolder = VehicleArtFolder + "/BlueTruck";
         private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
         private const string StageFolder = "Assets/Stages";
@@ -225,6 +226,7 @@ namespace CargoStack.EditorTools
                 groundLayer,
                 out Transform bedAnchor);
             var mover = truck.GetComponent<TruckMover>();
+            ConfigureTruckAudio(truck);
 
             using (var wiring = new Wiring(mover))
             {
@@ -241,7 +243,11 @@ namespace CargoStack.EditorTools
             // 아래 짐·플레이어·카메라가 모두 이 자세를 기준으로 자리를 잡으므로 순서를 지켜야 한다.
             mover.SnapToStart();
 
-            List<Cargo> cargo = BuildCargo(truck.transform, cargoPhysics, definition.Cargo);
+            List<Cargo> cargo = BuildCargo(
+                truck.transform,
+                cargoPhysics,
+                definition.Cargo,
+                LoadPrototypeImpactClips());
 
             Camera firstPersonCamera = BuildFirstPersonCamera(out Transform carryAnchor);
             GameObject player = BuildPlayer(truck.transform, firstPersonCamera, carryAnchor, playerMaterial);
@@ -522,6 +528,32 @@ namespace CargoStack.EditorTools
             return truck;
         }
 
+        private static void ConfigureTruckAudio(GameObject truck)
+        {
+            AudioClip engineLoop = LoadAudioClip("engine_idle_loop.wav");
+            truck.AddComponent<AudioSource>();
+            truck.AddComponent<TruckEngineAudio>().Configure(engineLoop);
+        }
+
+        private static AudioClip[] LoadPrototypeImpactClips()
+        {
+            return new[]
+            {
+                LoadAudioClip("cargo_thump_01.wav"),
+                LoadAudioClip("cargo_thump_02.wav"),
+                LoadAudioClip("cargo_thump_03.wav"),
+            };
+        }
+
+        private static AudioClip LoadAudioClip(string fileName)
+        {
+            string path = $"{PrototypeAudioFolder}/{fileName}";
+            return AssetDatabase.LoadAssetAtPath<AudioClip>(path)
+                ?? throw new InvalidOperationException(
+                    $"프로토타입 오디오를 찾지 못했다: {path}. "
+                    + "tools/generate_prototype_audio.py를 먼저 실행한다.");
+        }
+
         private static void AddBlueTruckVisual(Transform truck, int groundLayer)
         {
             BlueTruckWheelMeshGenerator.Generate();
@@ -672,7 +704,8 @@ namespace CargoStack.EditorTools
         private static List<Cargo> BuildCargo(
             Transform truck,
             PhysicsMaterial physics,
-            IReadOnlyList<StageCargoDefinition> definitions)
+            IReadOnlyList<StageCargoDefinition> definitions,
+            AudioClip[] impactClips)
         {
             var cargoRoot = new GameObject("Cargo").transform;
             // 각 모델은 보이는 FBX와 보이지 않는 충돌 프록시를 분리한다. 프록시는
@@ -703,6 +736,8 @@ namespace CargoStack.EditorTools
                 body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
 
                 cargo.Add(item.AddComponent<Cargo>());
+                item.AddComponent<AudioSource>();
+                item.AddComponent<CargoImpactAudio>().Configure(impactClips);
             }
 
             return cargo;
@@ -940,6 +975,8 @@ namespace CargoStack.EditorTools
             camera.backgroundColor = new Color(0.63f, 0.76f, 0.85f);
             camera.clearFlags = CameraClearFlags.SolidColor;
             camera.enabled = false;
+            AudioListener listener = holder.AddComponent<AudioListener>();
+            listener.enabled = false;
 
             DioramaCamera rig = holder.AddComponent<DioramaCamera>();
             using (var wiring = new Wiring(rig))
