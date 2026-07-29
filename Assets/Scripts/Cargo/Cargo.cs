@@ -11,7 +11,6 @@ namespace CargoStack
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(Rigidbody))]
-    [RequireComponent(typeof(BoxCollider))]
     public sealed class Cargo : MonoBehaviour
     {
         private Rigidbody body;

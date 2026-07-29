@@ -21,13 +21,15 @@ namespace CargoStack.EditorTools
     public static class PrototypeSceneBuilder
     {
         private const string SceneFolder = "Assets/Scenes";
-        private const string ScenePath = SceneFolder + "/Prototype.unity";
         private const string MaterialFolder = "Assets/Materials";
         private const string MeshFolder = "Assets/Meshes";
         private const string CargoArtFolder = "Assets/Art/Cargo";
         private const string VehicleArtFolder = "Assets/Art/Vehicles";
         private const string BlueTruckFolder = VehicleArtFolder + "/BlueTruck";
         private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
+        private const string StageFolder = "Assets/Stages";
+        private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
+        private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
         // v2 Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤
@@ -56,19 +58,11 @@ namespace CargoStack.EditorTools
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
 
-        /// <summary>출발선의 경로상 거리. 이 앞 구간은 직선이라 적재장으로 쓴다.</summary>
-        private const float TruckStartDistance = 8f;
-
-        /// <summary>최고 속도(m/s). 약 36km/h. 급제동 골짜기의 깊이도 이 값에 비례해 세진다.</summary>
-        private const float MaxSpeed = 10f;
-
         private const float RoadWidth = 13f;
         private const float RoadThickness = 1.2f;
 
         /// <summary>도로 조각을 이웃과 겹치게 늘리는 배율. 커브 바깥쪽이 벌어지는 것을 막는다.</summary>
         private const float RoadBlockOverlap = 1.5f;
-
-        public const int CargoCount = 6;
 
         /// <summary>
         /// 화물을 집을 수 있는 거리. 플레이어 발밑에서 화물 무게중심까지 잰다.
@@ -84,33 +78,107 @@ namespace CargoStack.EditorTools
         /// <summary>미리보기를 띄울 면을 찾는 거리. 집을 수 있는 거리보다 너무 멀면 되찾지 못할 곳에 놓게 된다.</summary>
         private const float CargoPlacementReach = 6f;
 
-        /// <summary>
-        /// 도로 중심선 제어점. 위에서 보면 일직선이고, 옆에서 보면 오르막과 내리막이 굽이친다.
-        /// 곡선이 이 점들을 모두 지나가므로 마루와 골짜기가 각지지 않고 둥글게 이어진다.
-        ///
-        /// 두 구간은 일부러 평평하게 남겨 뒀다. 앞머리 직선은 짐을 쌓는 적재장이고,
-        /// 능선은 급제동 구간이다. 급제동을 굴곡 위에 걸면 마루가 짐을 띄우는 효과와
-        /// 감속이 겹쳐 버려서, 플레이어가 무엇 때문에 실패했는지 배울 수 없다.
-        /// </summary>
-        private static readonly Vector3[] RouteControlPoints =
-        {
-            new Vector3(0f, 0f, 0f),
-            new Vector3(16f, 0f, 0f),      // 적재·출발 평지
-            new Vector3(28f, 0f, 0f),
-            new Vector3(40f, 3.2f, 0f),    // 첫 오르막
-            new Vector3(52f, 5f, 0f),      // 마루로 올라붙는다
-            new Vector3(64f, 4.6f, 0f),    // 능선 평지 = 급제동 구간
-            new Vector3(76f, 1f, 0f),      // 긴 내리막
-            new Vector3(86f, -1.2f, 0f),   // 골짜기 바닥
-            new Vector3(94f, 1.6f, 0f),    // 짧고 가파른 오르막
-            new Vector3(104f, 2.6f, 0f),   // 두 번째 마루
-            new Vector3(112f, 0.2f, 0f),   // 내려온다
-            new Vector3(126f, 0f, 0f),     // 마무리 평지
-        };
-
         [MenuItem("CargoStack/프로토타입 씬 다시 만들기")]
         public static void Build()
         {
+            Build(LoadStageDefinition(PrototypeStagePath));
+        }
+
+        [MenuItem("CargoStack/스테이지/선택한 정의로 씬 만들기")]
+        public static void BuildSelectedStage()
+        {
+            Build((StageDefinition)Selection.activeObject);
+        }
+
+        [MenuItem("CargoStack/스테이지/선택한 정의로 씬 만들기", true)]
+        private static bool CanBuildSelectedStage()
+        {
+            return Selection.activeObject is StageDefinition;
+        }
+
+        [MenuItem("CargoStack/스테이지/모든 씬 다시 만들기")]
+        public static void BuildAllStages()
+        {
+            string[] paths = FindStageDefinitionPaths();
+            foreach (string path in paths)
+            {
+                Build(LoadStageDefinition(path));
+            }
+
+            BuildMainMenu();
+        }
+
+        [MenuItem("CargoStack/메인 메뉴 다시 만들기")]
+        public static void BuildMainMenu()
+        {
+            string[] paths = FindStageDefinitionPaths();
+
+            Directory.CreateDirectory(SceneFolder);
+            Scene scene = EditorSceneManager.NewScene(
+                NewSceneSetup.EmptyScene,
+                NewSceneMode.Single);
+
+            var visibleStages = new List<StageDefinition>();
+            foreach (string path in paths)
+            {
+                StageDefinition definition = LoadStageDefinition(path);
+                definition.ValidateOrThrow();
+                if (definition.ShowInMenu)
+                {
+                    visibleStages.Add(definition);
+                }
+            }
+
+            if (visibleStages.Count == 0)
+            {
+                throw new InvalidOperationException(
+                    "메인 메뉴에 표시할 스테이지가 없다.");
+            }
+
+            var cameraObject = new GameObject("Main Camera")
+            {
+                tag = "MainCamera",
+            };
+            Camera camera = cameraObject.AddComponent<Camera>();
+            camera.clearFlags = CameraClearFlags.SolidColor;
+            camera.backgroundColor = new Color(0.07f, 0.10f, 0.14f);
+            cameraObject.AddComponent<AudioListener>();
+
+            var menuObject = new GameObject("MainMenu");
+            menuObject.AddComponent<MainMenuController>()
+                .Configure(visibleStages.ToArray());
+
+            EditorSceneManager.SaveScene(scene, MainMenuScenePath);
+            EnsureSceneInBuildSettings(MainMenuScenePath, true);
+            AssetDatabase.SaveAssets();
+
+            Debug.Log(
+                $"[CargoStack] 메인 메뉴 생성 완료: {MainMenuScenePath} "
+                + $"(표시 스테이지 {visibleStages.Count}개)");
+        }
+
+        /// <summary>
+        /// 정의 하나를 플레이 가능한 씬 하나로 만든다.
+        /// 아직 스테이지 선택 UI는 없으므로 메뉴는 Prototype만 호출하지만, 새 정의를 추가할 때
+        /// 차량·카메라·게임 흐름 생성 코드를 복사하지 않도록 이 경계를 둔다.
+        /// </summary>
+        public static void Build(StageDefinition definition)
+        {
+            if (definition == null)
+            {
+                throw new ArgumentNullException(nameof(definition));
+            }
+
+            definition.ValidateOrThrow();
+            string definitionPath = AssetDatabase.GetAssetPath(definition);
+            if (string.IsNullOrEmpty(definitionPath))
+            {
+                throw new InvalidOperationException(
+                    $"{definition.name}: 저장된 StageDefinition 에셋이 아니다.");
+            }
+
+            string scenePath = $"{SceneFolder}/{definition.SceneName}.unity";
+
             Directory.CreateDirectory(SceneFolder);
             Directory.CreateDirectory(MaterialFolder);
             AssetDatabase.Refresh();
@@ -128,9 +196,25 @@ namespace CargoStack.EditorTools
             ApplyPhysicsProjectSettings();
 
             Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+            // Single 모드로 새 씬을 열면 아직 씬에서 참조하지 않는 에셋이 언로드될 수 있다.
+            // 저장 경로로 다시 불러와 StageContext가 영속적인 에셋 참조를 갖게 한다.
+            definition = LoadStageDefinition(definitionPath);
 
-            RoutePath route = BuildRoute(groundLayer, groundMaterial);
-            float goalDistance = route.TotalLength - 6f;
+            var stageObject = new GameObject("Stage");
+            stageObject.AddComponent<StageContext>().Configure(definition);
+
+            RoutePath route = BuildRoute(
+                groundLayer,
+                groundMaterial,
+                definition.CopyRouteControlPoints(),
+                definition.SceneName);
+            float goalDistance = route.TotalLength - definition.GoalOffsetFromEnd;
+            if (goalDistance <= definition.TruckStartDistance)
+            {
+                throw new InvalidOperationException(
+                    $"{definition.name}: 도착 거리({goalDistance:0.##}m)가 "
+                    + $"출발 거리({definition.TruckStartDistance:0.##}m)보다 뒤에 있지 않다.");
+            }
 
             CreateLighting();
 
@@ -145,10 +229,10 @@ namespace CargoStack.EditorTools
             using (var wiring = new Wiring(mover))
             {
                 wiring.Ref("path", route)
-                    .Num("startDistance", TruckStartDistance)
+                    .Num("startDistance", definition.TruckStartDistance)
                     .Num("goalDistance", goalDistance)
-                    .Num("maxSpeed", MaxSpeed)
-                    .Curve("speedOverProgress", BuildSpeedProfile(route, TruckStartDistance, goalDistance))
+                    .Num("maxSpeed", definition.MaxSpeed)
+                    .Curve("speedOverProgress", definition.CopySpeedOverProgress())
                     .Num("minSpeedFactor", 0.06f)
                     .Num("rideHeight", RideHeight);
             }
@@ -157,7 +241,7 @@ namespace CargoStack.EditorTools
             // 아래 짐·플레이어·카메라가 모두 이 자세를 기준으로 자리를 잡으므로 순서를 지켜야 한다.
             mover.SnapToStart();
 
-            List<Cargo> cargo = BuildCargo(truck.transform, cargoPhysics);
+            List<Cargo> cargo = BuildCargo(truck.transform, cargoPhysics, definition.Cargo);
 
             Camera firstPersonCamera = BuildFirstPersonCamera(out Transform carryAnchor);
             GameObject player = BuildPlayer(truck.transform, firstPersonCamera, carryAnchor, playerMaterial);
@@ -197,47 +281,39 @@ namespace CargoStack.EditorTools
                     .Ref("cargoMaterial", cargoPhysics);
             }
 
-            EditorSceneManager.SaveScene(scene, ScenePath);
-            EditorBuildSettings.scenes = new[] { new EditorBuildSettingsScene(ScenePath, true) };
+            EditorSceneManager.SaveScene(scene, scenePath);
+            EnsureSceneInBuildSettings(scenePath);
             AssetDatabase.SaveAssets();
 
-            Debug.Log($"[CargoStack] 프로토타입 씬 생성 완료: {ScenePath} " +
+            Debug.Log($"[CargoStack] {definition.StageId} 씬 생성 완료: {scenePath} " +
                 $"(경로 {route.TotalLength:0.0}m, 도착 {goalDistance:0.0}m, 도로 조각 {route.SampleCount - 1}개, 화물 {cargo.Count}개)");
         }
 
-        /// <summary>
-        /// 주행 속도 프로필. 골짜기 구간이 급제동이고, 짐을 앞으로 쏟아지게 만드는 순간이다.
-        ///
-        /// 감속도가 마찰 한계 μg 를 넘어야 짐이 미끄러진다. 마찰 0.5 기준 4.9m/s² 가 문턱이라
-        /// 완만한 감속으로는 아무 일도 일어나지 않는다. 그래서 골짜기를 좁고 깊게 판다.
-        /// 반대로 출발 가속과 도착 감속은 일부러 문턱 아래(3m/s² 안팎)로 눕혀 놓았다.
-        /// 출발하자마자, 혹은 결승선에서 짐이 쏟아지면 배치 실력과 결과가 이어지지 않기 때문이다.
-        ///
-        /// 구간을 진행도(0~1)가 아니라 미터로 잡고 경로에서 환산한다.
-        /// 경로 모양을 바꿔 길이가 달라져도 급제동이 능선 위에 그대로 남아 있어야 하기 때문이다.
-        /// </summary>
-        private static AnimationCurve BuildSpeedProfile(RoutePath route, float startDistance, float goalDistance)
+        private static StageDefinition LoadStageDefinition(string path)
         {
-            // 능선(제어점 4~5) 한복판. 여기는 평평해서 감속 효과만 따로 시험할 수 있다.
-            float brakeBottom = Mathf.Lerp(route.DistanceAtControlPoint(4), route.DistanceAtControlPoint(5), 0.6f);
+            return AssetDatabase.LoadAssetAtPath<StageDefinition>(path)
+                ?? throw new InvalidOperationException($"스테이지 정의를 찾지 못했다: {path}");
+        }
 
-            float ToProgress(float distance) => Mathf.InverseLerp(startDistance, goalDistance, distance);
-
-            var curve = new AnimationCurve(
-                new Keyframe(0f, 0.4f),
-                new Keyframe(ToProgress(startDistance + 13f), 1f),
-                new Keyframe(ToProgress(brakeBottom - 4.2f), 1f),
-                new Keyframe(ToProgress(brakeBottom), 0.08f),
-                new Keyframe(ToProgress(brakeBottom + 15f), 1f),
-                new Keyframe(ToProgress(goalDistance - 12f), 1f),
-                new Keyframe(1f, 0.3f));
-
-            for (int i = 0; i < curve.length; i++)
+        private static string[] FindStageDefinitionPaths()
+        {
+            string[] guids = AssetDatabase.FindAssets(
+                "t:StageDefinition",
+                new[] { StageFolder });
+            if (guids.Length == 0)
             {
-                curve.SmoothTangents(i, 0f);
+                throw new InvalidOperationException(
+                    $"{StageFolder}에서 스테이지 정의를 찾지 못했다.");
             }
 
-            return curve;
+            var paths = new string[guids.Length];
+            for (int index = 0; index < guids.Length; index++)
+            {
+                paths[index] = AssetDatabase.GUIDToAssetPath(guids[index]);
+            }
+
+            Array.Sort(paths, StringComparer.Ordinal);
+            return paths;
         }
 
         /// <summary>
@@ -248,15 +324,19 @@ namespace CargoStack.EditorTools
         /// 부딪히는 면은 여전히 상자다. 커브 바깥쪽 호가 안쪽보다 길어서 상자 길이를 딱 맞추면
         /// 바깥 차선에 구멍이 뚫리므로, 이웃과 겹치게 늘려 깐다. 겹쳐도 이제는 안 보인다.
         /// </summary>
-        private static RoutePath BuildRoute(int layer, Material material)
+        private static RoutePath BuildRoute(
+            int layer,
+            Material material,
+            Vector3[] controlPoints,
+            string sceneName)
         {
             var holder = new GameObject("Route");
             RoutePath route = holder.AddComponent<RoutePath>();
-            route.SetControlPoints(RouteControlPoints);
+            route.SetControlPoints(controlPoints);
 
             var surface = new GameObject("RoadSurface");
             surface.transform.SetParent(holder.transform, false);
-            surface.AddComponent<MeshFilter>().sharedMesh = EnsureRoadMesh(route);
+            surface.AddComponent<MeshFilter>().sharedMesh = EnsureRoadMesh(route, sceneName);
             surface.AddComponent<MeshRenderer>().sharedMaterial = material;
 
             var blocks = new GameObject("RoadColliders").transform;
@@ -295,7 +375,7 @@ namespace CargoStack.EditorTools
         /// 도로에 뱅킹을 주지 않으므로 좌우 폭은 항상 수평이다.
         /// 메시는 씬에 끼워 넣을 수 없어 별도 에셋으로 저장한다.
         /// </summary>
-        private static Mesh EnsureRoadMesh(RoutePath route)
+        private static Mesh EnsureRoadMesh(RoutePath route, string sceneName)
         {
             int count = route.SampleCount;
             var vertices = new Vector3[count * 4];
@@ -335,7 +415,7 @@ namespace CargoStack.EditorTools
                 triangles.Add(b + 1); triangles.Add(b + 3); triangles.Add(a + 3);
             }
 
-            var mesh = new Mesh { name = "RoadSurface" };
+            var mesh = new Mesh { name = $"{sceneName}_RoadSurface" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
             mesh.RecalculateNormals();
@@ -344,7 +424,7 @@ namespace CargoStack.EditorTools
             Directory.CreateDirectory(MeshFolder);
             AssetDatabase.Refresh();
 
-            string path = $"{MeshFolder}/RoadSurface.asset";
+            string path = $"{MeshFolder}/{sceneName}_RoadSurface.asset";
             var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
             if (existing == null)
             {
@@ -589,26 +669,19 @@ namespace CargoStack.EditorTools
         /// 짐은 트럭 옆 바닥에 널어 둔다. 플레이어가 걸어가 하나씩 실어야 한다.
         /// 자리는 트럭 기준 상대 좌표로 잡는다. 출발선이 경로를 따라 움직여도 같이 따라오게 하기 위함이다.
         /// </summary>
-        private static List<Cargo> BuildCargo(Transform truck, PhysicsMaterial physics)
+        private static List<Cargo> BuildCargo(
+            Transform truck,
+            PhysicsMaterial physics,
+            IReadOnlyList<StageCargoDefinition> definitions)
         {
             var cargoRoot = new GameObject("Cargo").transform;
-            // 각 모델은 보이는 FBX와 보이지 않는 BoxCollider 프록시를 분리한다. 프록시는
+            // 각 모델은 보이는 FBX와 보이지 않는 충돌 프록시를 분리한다. 프록시는
             // PlayerCargoInteractor 의 배치 계산 및 트럭 위 물리를 안정적으로 유지한다.
-            var visuals = new[]
-            {
-                new CargoVisualDefinition("CardboardBox", new Vector3(0.9f, 0.85f, 0.9f), 18f),
-                new CargoVisualDefinition("BlueBarrel", new Vector3(0.78f, 0.95f, 0.78f), 22f),
-                new CargoVisualDefinition("MarbleBust", new Vector3(0.8f, 1.05f, 0.8f), 28f),
-                new CargoVisualDefinition("FloorLamp", new Vector3(0.7f, 1.15f, 0.7f), 16f),
-                new CargoVisualDefinition("CardboardBox", new Vector3(0.82f, 0.78f, 0.82f), 20f),
-                new CargoVisualDefinition("BlueBarrel", new Vector3(0.72f, 0.88f, 0.72f), 24f),
-            };
+            var cargo = new List<Cargo>(definitions.Count);
 
-            var cargo = new List<Cargo>(CargoCount);
-
-            for (int index = 0; index < CargoCount; index++)
+            for (int index = 0; index < definitions.Count; index++)
             {
-                CargoVisualDefinition definition = visuals[index % visuals.Length];
+                StageCargoDefinition definition = definitions[index];
                 var item = new GameObject($"Cargo_{index + 1:00}");
                 item.transform.SetParent(cargoRoot, false);
                 Vector3 proxySize = AddImportedCargoVisual(item.transform, definition);
@@ -620,9 +693,7 @@ namespace CargoStack.EditorTools
                     -3f - index / 3 * 1.2f);
 
                 item.transform.position = truck.TransformPoint(localSpot);
-                BoxCollider box = item.AddComponent<BoxCollider>();
-                box.size = proxySize;
-                box.sharedMaterial = physics;
+                AddCargoCollider(item, definition, proxySize, physics);
 
                 Rigidbody body = item.AddComponent<Rigidbody>();
                 body.mass = definition.Mass;
@@ -637,13 +708,44 @@ namespace CargoStack.EditorTools
             return cargo;
         }
 
-        private static Vector3 AddImportedCargoVisual(Transform cargoRoot, CargoVisualDefinition definition)
+        private static void AddCargoCollider(
+            GameObject item,
+            StageCargoDefinition definition,
+            Vector3 proxySize,
+            PhysicsMaterial physics)
         {
-            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(definition.ModelPath)
-                ?? throw new InvalidOperationException($"화물 모델을 찾지 못했다: {definition.ModelPath}");
+            switch (definition.ColliderShape)
+            {
+                case StageCargoColliderShape.Box:
+                    BoxCollider box = item.AddComponent<BoxCollider>();
+                    box.size = proxySize;
+                    box.sharedMaterial = physics;
+                    break;
+
+                case StageCargoColliderShape.Capsule:
+                    CapsuleCollider capsule = item.AddComponent<CapsuleCollider>();
+                    capsule.direction = 1;
+                    capsule.radius = Mathf.Min(proxySize.x, proxySize.z) * 0.5f;
+                    capsule.height = Mathf.Max(proxySize.y, capsule.radius * 2f);
+                    capsule.sharedMaterial = physics;
+                    break;
+
+                default:
+                    throw new InvalidOperationException(
+                        $"지원하지 않는 화물 충돌 형태다: {definition.ColliderShape}");
+            }
+        }
+
+        private static Vector3 AddImportedCargoVisual(
+            Transform cargoRoot,
+            StageCargoDefinition definition)
+        {
+            string modelPath = GetCargoModelPath(definition);
+            GameObject model = AssetDatabase.LoadAssetAtPath<GameObject>(modelPath)
+                ?? throw new InvalidOperationException($"화물 모델을 찾지 못했다: {modelPath}");
             Material material = EnsureCargoMaterial(definition);
             var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
-            visual.name = $"ImportedVisual_{definition.Name}";
+            visual.name = $"ImportedVisual_{definition.AssetName}";
             visual.transform.SetParent(cargoRoot, false);
             visual.transform.localPosition = Vector3.zero;
             // The supplied Meshy FBX files use Z-up. Turn their +Z axis toward Unity's +Y world
@@ -697,13 +799,17 @@ namespace CargoStack.EditorTools
             return bounds;
         }
 
-        private static Material EnsureCargoMaterial(CargoVisualDefinition definition)
+        private static Material EnsureCargoMaterial(StageCargoDefinition definition)
         {
-            Material material = AssetDatabase.LoadAssetAtPath<Material>(definition.MaterialPath);
+            string materialPath = GetCargoMaterialPath(definition);
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(materialPath);
             if (material == null)
             {
-                material = new Material(Shader.Find("Standard")) { name = definition.Name + "Material" };
-                AssetDatabase.CreateAsset(material, definition.MaterialPath);
+                material = new Material(Shader.Find("Standard"))
+                {
+                    name = definition.AssetName + "Material",
+                };
+                AssetDatabase.CreateAsset(material, materialPath);
             }
 
             material.SetTexture("_MainTex", LoadCargoTexture(definition, "Albedo"));
@@ -717,9 +823,12 @@ namespace CargoStack.EditorTools
             return material;
         }
 
-        private static Texture2D LoadCargoTexture(CargoVisualDefinition definition, string textureName, bool normalMap = false)
+        private static Texture2D LoadCargoTexture(
+            StageCargoDefinition definition,
+            string textureName,
+            bool normalMap = false)
         {
-            string path = $"{definition.Folder}/{textureName}.png";
+            string path = $"{GetCargoFolder(definition)}/{textureName}.png";
             if (normalMap && AssetImporter.GetAtPath(path) is TextureImporter importer
                 && importer.textureType != TextureImporterType.NormalMap)
             {
@@ -731,21 +840,19 @@ namespace CargoStack.EditorTools
                 ?? throw new InvalidOperationException($"화물 텍스처를 찾지 못했다: {path}");
         }
 
-        private sealed class CargoVisualDefinition
+        private static string GetCargoFolder(StageCargoDefinition definition)
         {
-            public string Name { get; }
-            public Vector3 MaximumSize { get; }
-            public float Mass { get; }
-            public string Folder => $"{CargoArtFolder}/{Name}";
-            public string ModelPath => $"{Folder}/{Name}.fbx";
-            public string MaterialPath => $"{Folder}/{Name}Material.mat";
+            return $"{CargoArtFolder}/{definition.AssetName}";
+        }
 
-            public CargoVisualDefinition(string name, Vector3 maximumSize, float mass)
-            {
-                Name = name;
-                MaximumSize = maximumSize;
-                Mass = mass;
-            }
+        private static string GetCargoModelPath(StageCargoDefinition definition)
+        {
+            return $"{GetCargoFolder(definition)}/{definition.AssetName}.fbx";
+        }
+
+        private static string GetCargoMaterialPath(StageCargoDefinition definition)
+        {
+            return $"{GetCargoFolder(definition)}/{definition.AssetName}Material.mat";
         }
 
         private static Camera BuildFirstPersonCamera(out Transform carryAnchor)
@@ -858,6 +965,38 @@ namespace CargoStack.EditorTools
             RenderSettings.ambientSkyColor = new Color(0.6f, 0.66f, 0.72f);
             RenderSettings.ambientEquatorColor = new Color(0.42f, 0.45f, 0.44f);
             RenderSettings.ambientGroundColor = new Color(0.24f, 0.26f, 0.22f);
+        }
+
+        private static void EnsureSceneInBuildSettings(
+            string scenePath,
+            bool placeFirst = false)
+        {
+            var scenes = new List<EditorBuildSettingsScene>(EditorBuildSettings.scenes);
+            int existingIndex = scenes.FindIndex(item => item.path == scenePath);
+            var enabledScene = new EditorBuildSettingsScene(scenePath, true);
+
+            if (placeFirst)
+            {
+                if (existingIndex >= 0)
+                {
+                    scenes.RemoveAt(existingIndex);
+                }
+
+                scenes.Insert(0, enabledScene);
+                EditorBuildSettings.scenes = scenes.ToArray();
+                return;
+            }
+
+            if (existingIndex >= 0)
+            {
+                scenes[existingIndex] = enabledScene;
+            }
+            else
+            {
+                scenes.Add(enabledScene);
+            }
+
+            EditorBuildSettings.scenes = scenes.ToArray();
         }
 
         private static Transform CreatePoint(string name, Transform parent, Vector3 localPosition)

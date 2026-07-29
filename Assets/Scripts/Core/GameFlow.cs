@@ -37,6 +37,14 @@ namespace CargoStack
             SetState(GameState.Loading);
         }
 
+        private void Update()
+        {
+            if (Input.GetKeyDown(KeyCode.Escape))
+            {
+                ReturnToMainMenu();
+            }
+        }
+
         /// <summary>적재를 마치고 출발시킨다. 적재 단계에서만 유효하다.</summary>
         public void StartDriving()
         {
@@ -51,6 +59,11 @@ namespace CargoStack
         public void Restart()
         {
             SceneManager.LoadScene(SceneManager.GetActiveScene().buildIndex);
+        }
+
+        public void ReturnToMainMenu()
+        {
+            SceneManager.LoadScene("MainMenu");
         }
 
         private void HandleTruckArrived()

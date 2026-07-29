@@ -14,7 +14,6 @@ namespace CargoStack.Tests
     public class CoreLoopTests
     {
         private const float DriveTimeoutSeconds = 40f;
-        private const int ExpectedCargoCount = 6;
         private const int BlueTruckV2TriangleCount = 501510;
         private const float WheelRetentionRadius = 0.535f;
         private const float WheelRetentionHalfWidth = 0.190f;
@@ -42,6 +41,7 @@ namespace CargoStack.Tests
         private PlayerCargoInteractor interactor;
         private Transform bedAnchor;
         private TruckWheelAnimator wheelAnimator;
+        private StageContext stageContext;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -55,6 +55,7 @@ namespace CargoStack.Tests
             interactor = Object.FindFirstObjectByType<PlayerCargoInteractor>();
             bedAnchor = GameObject.Find("BedAnchor").transform;
             wheelAnimator = truck.GetComponent<TruckWheelAnimator>();
+            stageContext = Object.FindFirstObjectByType<StageContext>();
 
             Assert.NotNull(flow, "씬에 GameFlow 가 없다");
             Assert.NotNull(tracker, "씬에 CargoTracker 가 없다");
@@ -63,6 +64,8 @@ namespace CargoStack.Tests
             Assert.NotNull(interactor, "씬에 PlayerCargoInteractor 가 없다");
             Assert.NotNull(bedAnchor, "씬에 BedAnchor 가 없다");
             Assert.NotNull(wheelAnimator, "Truck 루트에 바퀴 시각 애니메이터가 없다");
+            Assert.NotNull(stageContext, "씬에 StageContext 가 없다");
+            Assert.NotNull(stageContext.Definition, "StageContext에 스테이지 정의가 없다");
 
             yield return null;
         }
@@ -86,6 +89,15 @@ namespace CargoStack.Tests
             Assert.AreEqual(GameState.Loading, flow.State);
             Assert.That(Vector3.Distance(truck.transform.position, start), Is.LessThan(0.01f),
                 "출발 전인데 트럭이 움직였다");
+        }
+
+        [UnityTest]
+        public IEnumerator 씬은_스테이지_정의와_같은_수의_화물을_생성한다()
+        {
+            Assert.AreEqual("prototype", stageContext.Definition.StageId);
+            Assert.AreEqual(SceneManager.GetActiveScene().name, stageContext.Definition.SceneName);
+            Assert.AreEqual(stageContext.Definition.CargoCount, GetCargo().Length);
+            yield break;
         }
 
         [UnityTest]
@@ -899,7 +911,10 @@ namespace CargoStack.Tests
             PlaceCargoInSingleLayer();
             yield return Settle(150);
 
-            Assert.AreEqual(ExpectedCargoCount, tracker.RemainingCount, "출발 전인데 짐이 이미 짐칸을 벗어났다");
+            Assert.AreEqual(
+                stageContext.Definition.CargoCount,
+                tracker.RemainingCount,
+                "출발 전인데 짐이 이미 짐칸을 벗어났다");
 
             Time.timeScale = 3f;
             flow.StartDriving();
@@ -937,7 +952,10 @@ namespace CargoStack.Tests
             flow.StartDriving();
             yield return WaitForResult();
 
-            Assert.AreEqual(ExpectedCargoCount, dropped, "바닥에 놔둔 짐이 낙하로 집계되지 않았다");
+            Assert.AreEqual(
+                stageContext.Definition.CargoCount,
+                dropped,
+                "바닥에 놔둔 짐이 낙하로 집계되지 않았다");
             Assert.AreEqual(0, tracker.RemainingCount);
         }
 
@@ -984,7 +1002,10 @@ namespace CargoStack.Tests
         private Cargo[] GetCargo()
         {
             Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
-            Assert.AreEqual(ExpectedCargoCount, cargo.Length, $"짐 {ExpectedCargoCount}개를 기대했다");
+            Assert.AreEqual(
+                stageContext.Definition.CargoCount,
+                cargo.Length,
+                $"짐 {stageContext.Definition.CargoCount}개를 기대했다");
             return cargo;
         }
 

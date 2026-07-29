@@ -24,8 +24,11 @@ Unity Hub에서 저장소 루트를 프로젝트로 추가하고 위 버전으�
 ## 실행 방법
 
 1. Unity Hub에서 저장소 루트를 Unity `6000.5.4f1`로 연다.
-2. `Assets/Scenes/Prototype.unity` 씬을 연다.
+2. `Assets/Scenes/MainMenu.unity` 씬을 연다.
 3. Play 버튼을 누른다.
+
+Editor에서는 다른 씬을 열어 둔 상태에서도 Play하면 기본적으로 `MainMenu`부터 시작한다.
+현재 씬을 바로 테스트하려면 `CargoStack > Play Mode > 메인 메뉴부터 시작`을 끈다.
 
 ### 조작
 
@@ -39,7 +42,8 @@ Unity Hub에서 저장소 루트를 프로젝트로 추가하고 위 버전으�
 | `E` | 화물 집기 / 놓기 |
 | `Q` (누름 유지) | 들고 있는 화물 미리보기를 초당 90도 반시계 회전 |
 | `Enter` | 적재 완료, 출발 |
-| `Esc` | 커서 잠금 해제 |
+| `Tab` | 커서 잠금 해제 |
+| `Esc` | 스테이지 선택으로 돌아가기 |
 
 주행 단계 (자유 시점)
 
@@ -48,6 +52,7 @@ Unity Hub에서 저장소 루트를 프로젝트로 추가하고 위 버전으�
 | 좌클릭 드래그 | 시점 회전 (쿼터뷰 ↔ 탑뷰 ↔ 사이드뷰) |
 | 마우스 휠 | 확대 / 축소 |
 | `Backspace` | 재시작 |
+| `Esc` | 스테이지 선택으로 돌아가기 |
 
 화물을 들면 조준한 수평면에 반투명 미리보기가 나타난다. 그 자리에 그대로 놓인다.
 
@@ -65,18 +70,18 @@ Unity Hub에서 저장소 루트를 프로젝트로 추가하고 위 버전으�
 트럭을 돌아가는 게 번거롭다고 느껴지면 그때 올리면 된다.
 
 HUD 슬라이더로 짐칸/화물 마찰을 바꿀 수 있다. 적재 중에는 커서가 잠겨 있으니
-`Esc`로 커서를 푼 뒤 슬라이더를 만지고, 화면을 다시 클릭하면 시점 조작으로 돌아온다.
+`Tab`으로 커서를 푼 뒤 슬라이더를 만지고, 화면을 다시 클릭하면 시점 조작으로 돌아온다.
 
 ## 현재 범위 (MVP 검증판)
 
 핵심 두 가지, **1인칭 짐 쌓기**와 **트럭 자동 주행**이 재미있는지만 확인한다.
 
 - 화물: 사용자 제공 Cardboard Box·Blue Barrel·Marble Bust·Floor Lamp FBX를 재사용한 6개
-  (보이는 모델과 물리 BoxCollider 프록시를 분리해 짐칸에 3x2 한 층이 들어간다)
+  (보이는 모델과 물리 Box/Capsule 프록시를 분리해 짐칸에 3x2 한 층이 들어간다)
 - 경로: 128m. 위에서 보면 일직선, 옆에서 보면 굽이치는 오르막과 내리막
   (적재장 평지 → 첫 오르막 → 능선에서 급제동 1회 → 긴 내리막 → 골짜기 → 두 번째 마루 → 마무리 평지)
 - 최고 속도 10m/s (약 36km/h)
-- 고정 장비(로프·쐐기 등), 원통·유리 등 짐 속성, 스테이지 선택, 점수 UI는 아직 없다
+- 고정 장비(로프·쐐기 등), 유리 등 추가 짐 속성, 점수 UI는 아직 없다
 
 짐을 위협하는 것이 둘이다. **급제동**은 짐을 앞으로 쏟고, **마루**는 짐을 가볍게 만들어
 마찰을 풀어 놓는다. 급제동은 능선의 평평한 곳에 따로 걸어 뒀다. 마루 위에 겹치면
@@ -140,25 +145,44 @@ Assets/
     Player/   PlayerController, FirstPersonCamera, PlayerCargoInteractor
     Vehicle/  RoutePath(도로 중심선), TruckMover(경로 위 자동 주행)
     Cargo/    Cargo(짐), CargoTracker(낙하 판정)
+    Stage/    StageDefinition(스테이지 데이터), StageContext(현재 스테이지), MainMenuController
     View/     CameraDirector(시점 전환), DioramaCamera(자유 시점 관전)
     Debug/    PrototypeHud(임시 HUD + 마찰 튜닝)
   Editor/
     PrototypeSceneBuilder.cs
     PrototypePreview.cs
+  Stages/
+    Prototype/PrototypeStage.asset
+    Stage01/Stage01Tutorial.asset
+    Stage02/Stage02SpeedBumps.asset
 ```
 
-### 도로를 바꾸는 법
+### 스테이지를 바꾸는 법
 
-`PrototypeSceneBuilder.RouteControlPoints`의 제어점만 고치고 씬을 다시 만들면 된다.
-곡선이 그 점들을 모두 지나가고, 도로 메시·콜라이더·출발선·급제동 위치가 알아서 따라온다.
-급제동 구간은 진행도가 아니라 미터로 잡아 경로에서 환산하므로, 경로 길이가 바뀌어도
-급제동은 능선 위에 그대로 남는다.
+`Assets/Stages` 아래의 `StageDefinition` 에셋에서 경로 제어점, 출발·도착 거리,
+최고 속도, 속도 곡선, 화물 구성을 고친 뒤 해당 생성 메뉴를 실행한다.
 
 제어점의 `z`는 지금 전부 0이다. 위에서 보면 일직선이라는 뜻이다. `RoutePath`는 좌우 굽이도
 그대로 지원하므로, 나중에 필요하면 `z`만 흔들어 주면 된다.
 
 보이는 도로와 부딪히는 도로가 분리되어 있다. 보이는 쪽은 중심선을 따라 뜬 리본 메시 하나,
-부딪히는 쪽은 겹쳐 깔린 상자 콜라이더다.
+부딪히는 쪽은 겹쳐 깔린 상자 콜라이더다. 도로 메시도 씬 이름별 에셋으로 분리되어
+여러 스테이지를 다시 만들어도 서로 덮어쓰지 않는다.
+
+- `CargoStack > 프로토타입 씬 다시 만들기`: 기존 물리 검증용 `Prototype`
+- Project 창에서 정의 에셋을 선택한 뒤 `CargoStack > 스테이지 > 선택한 정의로 씬 만들기`
+- `CargoStack > 스테이지 > 모든 씬 다시 만들기`: `Assets/Stages`의 모든 정의를 경로순으로 생성
+- `CargoStack > 메인 메뉴 다시 만들기`: 메뉴 노출이 켜진 스테이지만 선택 화면에 반영
+
+새 스테이지는 기존 정의 에셋을 복제해 ID·씬 이름·경로·속도·화물만 바꾸면 된다.
+빌더에 새 메뉴나 에셋 경로를 추가할 필요는 없다.
+
+현재 `Stage01_Tutorial`은 원통 두 개, 상자 두 개, 조각상과 전등을 제공한다.
+`Stage02_SpeedBumps`는 경로 높이에 방지턱 두 개를 만들고, 상자 네 개와
+Capsule 충돌체를 사용하는 원통 화물 하나를 제공한다.
+
+`모든 씬 다시 만들기`는 마지막에 메인 메뉴도 갱신한다. 메뉴 씬은 Build Settings의
+첫 번째 씬이며, 각 스테이지 결과 화면에서 다시 돌아올 수 있다.
 
 `CargoStack > 시점 프리뷰 캡처` 메뉴를 실행하면 `/tmp/cargo-stack-preview`에 그림이 떨어진다.
 `route-profile.png`가 옆에서 본 굴곡이다. 경로를 고쳤으면 이걸 봐야 한다.
@@ -179,8 +203,9 @@ Assets/
 씬 파일은 git 자동 병합이 되지 않아 두 사람이 같은 씬을 고치면 한쪽 작업이 통째로 날아간다.
 그래서 프로토타입 씬은 코드로 생성한다.
 
-- 레벨/배치를 바꾸려면 `Assets/Editor/PrototypeSceneBuilder.cs`를 고친다
-- Unity 메뉴 `CargoStack > 프로토타입 씬 다시 만들기`를 실행하면 씬이 새로 만들어진다
+- 차량·카메라처럼 모든 스테이지가 공유하는 생성 규칙은 `PrototypeSceneBuilder.cs`에서 바꾼다
+- 경로·속도·화물처럼 스테이지마다 다른 값은 `Assets/Stages`의 정의 에셋에서 바꾼다
+- Unity의 해당 생성 메뉴를 실행하면 정의마다 독립된 씬과 도로 메시가 만들어진다
 
 ## 협업 규칙
 

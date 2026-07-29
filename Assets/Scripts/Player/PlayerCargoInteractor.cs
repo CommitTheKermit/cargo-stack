@@ -28,7 +28,9 @@ namespace CargoStack
 
         private readonly Dictionary<Collider, bool> heldColliderStates = new Dictionary<Collider, bool>();
         private Rigidbody heldBody;
-        private BoxCollider heldBoxCollider;
+        private Collider heldCollider;
+        private Vector3 heldColliderCenter;
+        private Vector3 heldColliderHalfSize;
         private Collider[] playerColliders;
         private GameObject placementPreview;
         private Material placementPreviewMaterial;
@@ -77,14 +79,21 @@ namespace CargoStack
             }
 
             Rigidbody body = cargo.GetComponent<Rigidbody>();
-            BoxCollider boxCollider = cargo.GetComponent<BoxCollider>();
-            if (body == null || boxCollider == null || Vector3.Distance(transform.position, body.worldCenterOfMass) > interactionRadius)
+            Collider cargoCollider = cargo.GetComponent<Collider>();
+            if (body == null
+                || !TryGetPlacementProxy(
+                    cargoCollider,
+                    out Vector3 colliderCenter,
+                    out Vector3 colliderHalfSize)
+                || Vector3.Distance(transform.position, body.worldCenterOfMass) > interactionRadius)
             {
                 return false;
             }
 
             heldBody = body;
-            heldBoxCollider = boxCollider;
+            heldCollider = cargoCollider;
+            heldColliderCenter = colliderCenter;
+            heldColliderHalfSize = colliderHalfSize;
             originalUseGravity = body.useGravity;
             originalCollisionMode = body.collisionDetectionMode;
             previewYaw = NormalizeYaw(body.rotation.eulerAngles.y);
@@ -118,7 +127,7 @@ namespace CargoStack
         public void RefreshPlacementPreview()
         {
             hasValidPlacement = false;
-            if (heldBody == null || heldBoxCollider == null || viewCamera == null || placementPreview == null)
+            if (heldBody == null || heldCollider == null || viewCamera == null || placementPreview == null)
             {
                 SetPlacementPreviewVisible(false);
                 return;
@@ -134,8 +143,8 @@ namespace CargoStack
 
             previewCargoRotation = Quaternion.Euler(0f, previewYaw, 0f);
             Vector3 absoluteScale = Abs(heldBody.transform.lossyScale);
-            Vector3 scaledCenter = Vector3.Scale(heldBoxCollider.center, absoluteScale);
-            Vector3 halfSize = Vector3.Scale(heldBoxCollider.size * 0.5f, absoluteScale);
+            Vector3 scaledCenter = Vector3.Scale(heldColliderCenter, absoluteScale);
+            Vector3 halfSize = Vector3.Scale(heldColliderHalfSize, absoluteScale);
             float supportDistance = ProjectHalfSizeOntoNormal(halfSize, previewCargoRotation, hit.normal);
             Vector3 previewColliderCenter = hit.point + hit.normal * (supportDistance + placementSurfaceGap);
 
@@ -241,7 +250,9 @@ namespace CargoStack
         {
             Rigidbody body = heldBody;
             heldBody = null;
-            heldBoxCollider = null;
+            heldCollider = null;
+            heldColliderCenter = Vector3.zero;
+            heldColliderHalfSize = Vector3.zero;
             hasValidPlacement = false;
             DestroyPlacementPreview();
             RestoreHeldCargoCollisions();
@@ -267,7 +278,7 @@ namespace CargoStack
         }
 
         /// <summary>
-        /// 물리 프록시(BoxCollider)를 확대해 보이던 기존 큐브 대신, 실제 화물의 렌더러
+        /// 물리 프록시를 확대해 보이던 기존 큐브 대신, 실제 화물의 렌더러
         /// 계층을 복제한다. 프리뷰에는 충돌체나 방향 마커를 추가하지 않는다.
         /// </summary>
         private void CopyHeldCargoVisualsToPreview()
@@ -467,6 +478,32 @@ namespace CargoStack
             return Mathf.Abs(Vector3.Dot(rotation * Vector3.right, normal)) * halfSize.x
                 + Mathf.Abs(Vector3.Dot(rotation * Vector3.up, normal)) * halfSize.y
                 + Mathf.Abs(Vector3.Dot(rotation * Vector3.forward, normal)) * halfSize.z;
+        }
+
+        private static bool TryGetPlacementProxy(
+            Collider collider,
+            out Vector3 center,
+            out Vector3 halfSize)
+        {
+            switch (collider)
+            {
+                case BoxCollider box:
+                    center = box.center;
+                    halfSize = box.size * 0.5f;
+                    return true;
+
+                case CapsuleCollider capsule:
+                    center = capsule.center;
+                    halfSize = Vector3.one * capsule.radius;
+                    halfSize[capsule.direction] =
+                        Mathf.Max(capsule.height * 0.5f, capsule.radius);
+                    return true;
+
+                default:
+                    center = Vector3.zero;
+                    halfSize = Vector3.zero;
+                    return false;
+            }
         }
 
         private static Vector3 Abs(Vector3 value)

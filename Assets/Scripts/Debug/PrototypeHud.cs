@@ -7,7 +7,7 @@ namespace CargoStack
     /// 마찰 슬라이더는 PhysicsMaterial 에셋을 직접 고치므로 플레이를 멈춰도 값이 남는다(의도한 동작).
     /// 기획서 4.1: 마찰 튜닝이 이 게임 재미의 8할이라 1주차부터 조절 수단을 갖춰 둔다.
     ///
-    /// 적재 중에는 1인칭 시점이라 커서가 잠겨 있다. Esc 로 커서를 풀어야 슬라이더를 만질 수 있고,
+    /// 적재 중에는 1인칭 시점이라 커서가 잠겨 있다. Tab 으로 커서를 풀어야 슬라이더를 만질 수 있고,
     /// 화면을 다시 클릭하면 시점 조작으로 돌아간다.
     /// </summary>
     public class PrototypeHud : MonoBehaviour
@@ -47,12 +47,12 @@ namespace CargoStack
                 GUILayout.Label("WASD 이동   마우스 시점   Space 점프", labelStyle);
                 GUILayout.Label("E 집기·놓기   Q 회전", labelStyle);
                 GUILayout.Label("Enter 출발   Backspace 재시작", labelStyle);
-                GUILayout.Label("Esc 커서 풀기 (슬라이더 조작용)", labelStyle);
+                GUILayout.Label("Esc 스테이지 선택   Tab 커서 풀기", labelStyle);
             }
             else
             {
                 GUILayout.Label("좌클릭 드래그 시점 회전   휠 확대·축소", labelStyle);
-                GUILayout.Label("Backspace 재시작", labelStyle);
+                GUILayout.Label("Backspace 재시작   Esc 스테이지 선택", labelStyle);
             }
 
             GUILayout.Space(10f);
@@ -62,6 +62,15 @@ namespace CargoStack
 
             GUILayout.Label("짐 마찰", labelStyle);
             DrawFrictionSliders(cargoMaterial);
+
+            if (flow.State == GameState.Result)
+            {
+                GUILayout.Space(10f);
+                if (GUILayout.Button("메인 메뉴로 돌아가기", GUILayout.Height(30f)))
+                {
+                    flow.ReturnToMainMenu();
+                }
+            }
 
             GUILayout.EndArea();
         }
