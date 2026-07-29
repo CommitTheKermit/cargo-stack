@@ -16,6 +16,7 @@ namespace CargoStack
         [SerializeField] private CargoTracker tracker;
         [SerializeField] private PhysicsMaterial bedMaterial;
         [SerializeField] private PhysicsMaterial cargoMaterial;
+        [SerializeField] private PlayerRopeInteractor ropeInteractor;
 
         private GUIStyle labelStyle;
 
@@ -36,18 +37,29 @@ namespace CargoStack
         {
             labelStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 15 };
 
-            GUILayout.BeginArea(new Rect(16f, 16f, 340f, 280f), GUI.skin.box);
+            GUILayout.BeginArea(new Rect(16f, 16f, 340f, 330f), GUI.skin.box);
 
             GUILayout.Label($"상태: {DescribeState()}", labelStyle);
             GUILayout.Label($"짐칸에 남은 짐: {tracker.RemainingCount} / {tracker.TotalCount}", labelStyle);
+            if (ropeInteractor != null)
+            {
+                GUILayout.Label($"남은 로프: {ropeInteractor.RemainingRopes}", labelStyle);
+            }
+
             GUILayout.Space(6f);
 
             if (flow.State == GameState.Loading)
             {
                 GUILayout.Label("WASD 이동   마우스 시점   Space 점프", labelStyle);
                 GUILayout.Label("E 집기·놓기   Q 회전", labelStyle);
+                GUILayout.Label("R 로프 걸기   X 로프 걷기", labelStyle);
                 GUILayout.Label("Enter 출발   Backspace 재시작", labelStyle);
                 GUILayout.Label("Esc 스테이지 선택   Tab 커서 풀기", labelStyle);
+
+                if (ropeInteractor != null && ropeInteractor.IsTyingKnot)
+                {
+                    GUILayout.Label("반대쪽 끝을 조준하고 R (X 로 취소)", labelStyle);
+                }
             }
             else
             {

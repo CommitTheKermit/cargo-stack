@@ -250,7 +250,12 @@ namespace CargoStack.EditorTools
                 LoadPrototypeImpactClips());
 
             Camera firstPersonCamera = BuildFirstPersonCamera(out Transform carryAnchor);
-            GameObject player = BuildPlayer(truck.transform, firstPersonCamera, carryAnchor, playerMaterial);
+            GameObject player = BuildPlayer(
+                truck.transform,
+                firstPersonCamera,
+                carryAnchor,
+                playerMaterial,
+                definition.RopeCount);
             Camera dioramaCamera = BuildDioramaCamera(truck.transform);
 
             var systems = new GameObject("Systems");
@@ -284,7 +289,8 @@ namespace CargoStack.EditorTools
                 wiring.Ref("flow", flow)
                     .Ref("tracker", tracker)
                     .Ref("bedMaterial", bedPhysics)
-                    .Ref("cargoMaterial", cargoPhysics);
+                    .Ref("cargoMaterial", cargoPhysics)
+                    .Ref("ropeInteractor", player.GetComponent<PlayerRopeInteractor>());
             }
 
             EditorSceneManager.SaveScene(scene, scenePath);
@@ -909,7 +915,11 @@ namespace CargoStack.EditorTools
         }
 
         private static GameObject BuildPlayer(
-            Transform truck, Camera firstPersonCamera, Transform carryAnchor, Material material)
+            Transform truck,
+            Camera firstPersonCamera,
+            Transform carryAnchor,
+            Material material,
+            int ropeCount)
         {
             // 짐 뒤에 서서 +Z(트럭 쪽)를 바라보게 둔다. 첫 화면에 짐과 트럭이 함께 들어온다.
             var player = new GameObject("Player");
@@ -957,6 +967,15 @@ namespace CargoStack.EditorTools
             {
                 wiring.Num("interactionRadius", CargoReach)
                     .Num("placementRange", CargoPlacementReach);
+            }
+
+            // 로프는 짐을 놓을 면을 찾는 거리와 같은 사거리를 쓴다. 짐을 놓을 수 있는 자리면
+            // 그 자리에 매듭도 지을 수 있어야 조작이 한 덩어리로 느껴진다.
+            PlayerRopeInteractor ropeInteractor = player.AddComponent<PlayerRopeInteractor>();
+            ropeInteractor.Configure(firstPersonCamera, ropeCount);
+            using (var wiring = new Wiring(ropeInteractor))
+            {
+                wiring.Num("ropeReach", CargoPlacementReach);
             }
 
             firstPersonCamera.GetComponent<FirstPersonCamera>().Configure(eye, true);

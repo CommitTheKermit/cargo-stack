@@ -24,6 +24,9 @@ namespace CargoStack
             AnimationCurve.Linear(0f, 1f, 1f, 1f);
         [SerializeField] private StageCargoDefinition[] cargo = Array.Empty<StageCargoDefinition>();
 
+        [Tooltip("이 스테이지에서 쓸 수 있는 로프 개수. 0이면 배치만으로 풀어야 한다.")]
+        [SerializeField, Min(0)] private int ropeCount = 2;
+
         public string StageId => stageId;
         public string SceneName => sceneName;
         public bool ShowInMenu => showInMenu;
@@ -34,6 +37,7 @@ namespace CargoStack
         public float MaxSpeed => maxSpeed;
         public IReadOnlyList<StageCargoDefinition> Cargo => cargo;
         public int CargoCount => cargo.Length;
+        public int RopeCount => ropeCount;
 
         public Vector3[] CopyRouteControlPoints()
         {
@@ -92,6 +96,11 @@ namespace CargoStack
             if (cargo == null || cargo.Length == 0)
             {
                 throw new InvalidOperationException($"{name}: 화물이 하나 이상 필요하다.");
+            }
+
+            if (ropeCount < 0)
+            {
+                throw new InvalidOperationException($"{name}: 로프 개수는 음수일 수 없다.");
             }
 
             for (int index = 0; index < cargo.Length; index++)
