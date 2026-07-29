@@ -109,6 +109,44 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 운전석_캐빈에는_짐_미리보기나_배치가_허용되지_않고_짐칸에는_허용된다()
+        {
+            Cargo cargo = FindCargoWithVisual("CardboardBox");
+            Rigidbody body = cargo.Body;
+            Vector3 cargoPosition = truck.transform.TransformPoint(new Vector3(0f, 1.4f, -3f));
+            body.position = cargoPosition;
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            cargo.transform.SetPositionAndRotation(body.position, body.rotation);
+
+            GameObject cameraObject = new GameObject("Cab Placement Test Camera");
+            Camera placementCamera = cameraObject.AddComponent<Camera>();
+            GameObject anchorObject = new GameObject("Cab Placement Test Anchor");
+            anchorObject.transform.position = cargoPosition;
+            player.SetWorldPose(cargoPosition + truck.transform.forward, truck.transform.rotation, Vector3.zero);
+
+            AimPlacementCameraAtTruckLocal(placementCamera, new Vector3(1.9f, 0.7f, 0f));
+            interactor.Configure(anchorObject.transform, placementCamera);
+            Physics.SyncTransforms();
+            yield return new WaitForFixedUpdate();
+
+            Assert.IsTrue(interactor.TryPickUp(cargo), "캐빈 배치 검사용 화물을 집지 못했다");
+            interactor.RefreshPlacementPreview();
+            Assert.IsFalse(interactor.HasValidPlacement, "운전석 캐빈 위에 유효한 화물 미리보기가 생겼다");
+            Assert.IsFalse(interactor.TryPlaceHeldCargo(), "운전석 캐빈에 화물이 배치됐다");
+            Assert.IsTrue(interactor.HasCargo, "막힌 캐빈 배치 뒤 화물을 놓아 버렸다");
+
+            AimPlacementCameraAtTruckLocal(placementCamera, new Vector3(BedCenterX, BedFloorTop, 0f));
+            interactor.RefreshPlacementPreview();
+            Assert.IsTrue(interactor.HasValidPlacement, "보이는 짐칸에 유효한 화물 미리보기가 생기지 않았다");
+            Assert.IsTrue(interactor.TryPlaceHeldCargo(), "보이는 짐칸에 화물을 배치하지 못했다");
+
+            Object.Destroy(cameraObject);
+            Object.Destroy(anchorObject);
+        }
+
+        [UnityTest]
         public IEnumerator 모든_화물은_루트_큐브가_아닌_가져온_모델을_보인다()
         {
             Cargo[] cargo = GetCargo();
@@ -954,6 +992,14 @@ namespace CargoStack.Tests
 
             Assert.Fail($"{visualName} 가져온 화물을 찾지 못했다");
             return null;
+        }
+
+        private void AimPlacementCameraAtTruckLocal(Camera cameraToAim, Vector3 truckLocalTarget)
+        {
+            Vector3 target = truck.transform.TransformPoint(truckLocalTarget);
+            cameraToAim.transform.SetPositionAndRotation(
+                target + truck.transform.up * 3f,
+                Quaternion.LookRotation(-truck.transform.up, truck.transform.forward));
         }
 
         private void MoveCargo(Cargo cargo, Vector3 bedLocalOffset)

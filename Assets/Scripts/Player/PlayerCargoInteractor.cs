@@ -140,6 +140,12 @@ namespace CargoStack
             Vector3 previewColliderCenter = hit.point + hit.normal * (supportDistance + placementSurfaceGap);
 
             previewCargoPosition = previewColliderCenter - previewCargoRotation * scaledCenter;
+            if (IsForbiddenPlacement(hit.collider, previewColliderCenter, halfSize, previewCargoRotation))
+            {
+                SetPlacementPreviewVisible(false);
+                return;
+            }
+
             // 프리뷰의 피벗은 BoxCollider 중심이 아니라 화물 루트다. 실제 시각 계층을
             // 그대로 복제했으므로, 놓일 화물과 같은 루트 자세를 써야 실루엣과 프록시가
             // 일치한다.
@@ -424,6 +430,36 @@ namespace CargoStack
             {
                 playerColliders = GetComponentsInChildren<Collider>();
             }
+        }
+
+        private static bool IsForbiddenPlacement(
+            Collider supportCollider,
+            Vector3 cargoCenter,
+            Vector3 cargoHalfSize,
+            Quaternion cargoRotation)
+        {
+            // 캐빈 지붕처럼 미리보기 프록시와 미세하게 떨어진 지지면도 금지한다.
+            if (supportCollider.GetComponentInParent<CargoPlacementForbiddenVolume>() != null)
+            {
+                return true;
+            }
+
+            // 지지면은 짐칸이어도, 화물 프록시 일부가 캐빈에 침범하는 배치는 막는다.
+            Collider[] overlaps = Physics.OverlapBox(
+                cargoCenter,
+                cargoHalfSize,
+                cargoRotation,
+                Physics.DefaultRaycastLayers,
+                QueryTriggerInteraction.Collide);
+            foreach (Collider overlap in overlaps)
+            {
+                if (overlap.GetComponentInParent<CargoPlacementForbiddenVolume>() != null)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static float ProjectHalfSizeOntoNormal(Vector3 halfSize, Quaternion rotation, Vector3 normal)

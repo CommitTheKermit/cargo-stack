@@ -5107,6 +5107,7 @@ GameObject:
   - component: {fileID: 894956824}
   - component: {fileID: 894956826}
   - component: {fileID: 894956825}
+  - component: {fileID: 894956827}
   m_Layer: 0
   m_Name: Cab
   m_TagString: Untagged
@@ -5129,6 +5130,18 @@ Transform:
   m_Children: []
   m_Father: {fileID: 671533329}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &894956827
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 894956823}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1456b8539d36415d93b3eb7742282ef2, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: CargoStack::CargoStack.CargoPlacementForbiddenVolume
 --- !u!65 &894956825
 BoxCollider:
   m_ObjectHideFlags: 0
