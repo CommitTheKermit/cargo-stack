@@ -34,6 +34,7 @@ namespace CargoStack.Tests
         private const float BedMinZ = -BedInsideWidth * 0.5f;
         private const float BedMaxZ = BedInsideWidth * 0.5f;
         private const float FrontCargoLimit = BedFrontBarrierX - BedWallThickness * 0.5f;
+        private const float CabInteriorForbiddenMinX = BedFrontBarrierX + BedWallThickness * 0.5f;
         private GameFlow flow;
         private CargoTracker tracker;
         private TruckMover truck;
@@ -109,7 +110,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 운전석_캐빈에는_짐_미리보기나_배치가_허용되지_않고_짐칸에는_허용된다()
+        public IEnumerator 운전석_실내_바닥과_캐빈에는_짐_미리보기나_배치가_허용되지_않고_짐칸에는_허용된다()
         {
             Cargo cargo = FindCargoWithVisual("CardboardBox");
             Rigidbody body = cargo.Body;
@@ -126,16 +127,37 @@ namespace CargoStack.Tests
             anchorObject.transform.position = cargoPosition;
             player.SetWorldPose(cargoPosition + truck.transform.forward, truck.transform.rotation, Vector3.zero);
 
-            AimPlacementCameraAtTruckLocal(placementCamera, new Vector3(1.9f, 0.7f, 0f));
+            GameObject cabInteriorVolume = GameObject.Find("CabInteriorPlacementForbiddenVolume");
+            Assert.NotNull(cabInteriorVolume, "캐빈 실내 배치 금지 볼륨이 없다");
+            BoxCollider cabInteriorCollider = cabInteriorVolume.GetComponent<BoxCollider>();
+            Assert.NotNull(cabInteriorCollider, "캐빈 실내 배치 금지 볼륨에 Collider가 없다");
+            Assert.IsTrue(cabInteriorCollider.isTrigger, "캐빈 실내 배치 금지 볼륨이 물리 차체가 됐다");
+
+            // 실제 실패 경로: 보이는 캐빈 실내 바닥에서는 Cab 프록시가 아니라 Chassis를
+            // 지지면으로 맞는다. 기존 테스트처럼 Cab 윗면만 겨냥하면 이 틈을 검증하지 못한다.
+            AimPlacementCameraAtTruckLocal(
+                placementCamera,
+                new Vector3(CabInteriorForbiddenMinX + 0.2f, BedFloorTop, 0f));
             interactor.Configure(anchorObject.transform, placementCamera);
             Physics.SyncTransforms();
             yield return new WaitForFixedUpdate();
 
+            Assert.IsTrue(
+                Physics.Raycast(
+                    placementCamera.ViewportPointToRay(new Vector3(0.5f, 0.5f, 0f)),
+                    out RaycastHit cabInteriorSupport,
+                    6f,
+                    Physics.DefaultRaycastLayers,
+                    QueryTriggerInteraction.Ignore),
+                "운전석 실내 배치 경로가 지지면을 맞추지 못했다");
+            Assert.AreEqual("Chassis", cabInteriorSupport.collider.name,
+                "실제 운전석 실내 배치 경로가 Cab 프록시가 아니라 Chassis를 지지면으로 맞지 않았다");
+
             Assert.IsTrue(interactor.TryPickUp(cargo), "캐빈 배치 검사용 화물을 집지 못했다");
             interactor.RefreshPlacementPreview();
-            Assert.IsFalse(interactor.HasValidPlacement, "운전석 캐빈 위에 유효한 화물 미리보기가 생겼다");
-            Assert.IsFalse(interactor.TryPlaceHeldCargo(), "운전석 캐빈에 화물이 배치됐다");
-            Assert.IsTrue(interactor.HasCargo, "막힌 캐빈 배치 뒤 화물을 놓아 버렸다");
+            Assert.IsFalse(interactor.HasValidPlacement, "운전석 실내 바닥에 유효한 화물 미리보기가 생겼다");
+            Assert.IsFalse(interactor.TryPlaceHeldCargo(), "운전석 실내 바닥에 화물이 배치됐다");
+            Assert.IsTrue(interactor.HasCargo, "막힌 운전석 실내 배치 뒤 화물을 놓아 버렸다");
 
             AimPlacementCameraAtTruckLocal(placementCamera, new Vector3(BedCenterX, BedFloorTop, 0f));
             interactor.RefreshPlacementPreview();

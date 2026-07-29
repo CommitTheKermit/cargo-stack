@@ -44,6 +44,15 @@ namespace CargoStack.EditorTools
         private const float BedFloorThickness = 0.12f;
         private const float BedWallThickness = 0.12f;
 
+        // 실제 BlueTruck 차체의 캐빈은 짐칸 앞 격벽 바로 뒤에서 시작한다. 기존 Cab 물리
+        // 프록시만 표시하면 그 프록시 앞쪽의 실내 바닥(Chassis)에 놓는 경로가 남는다.
+        // 이 볼륨은 배치 판정 전용 트리거라 주행 중 차체 충돌에는 관여하지 않는다.
+        private const float CabInteriorForbiddenMinX = BedFrontBarrierX + BedWallThickness * 0.5f;
+        private const float CabInteriorForbiddenMaxX = 3.10f;
+        private const float CabInteriorForbiddenWidth = 2.75f;
+        private const float CabInteriorForbiddenCenterY = 1.25f;
+        private const float CabInteriorForbiddenHeight = 3.5f;
+
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
 
@@ -375,6 +384,7 @@ namespace CargoStack.EditorTools
             // 적재 조작에서는 명시적으로 배치 금지 구역이다.
             AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, false)
                 .gameObject.AddComponent<CargoPlacementForbiddenVolume>();
+            AddCabInteriorPlacementForbiddenVolume(truck.transform);
 
             float bedLengthWithWalls = BedInsideLength + BedWallThickness * 2f;
             float wallCenterY = BedFloorTop + BedWallHeight * 0.5f;
@@ -553,6 +563,26 @@ namespace CargoStack.EditorTools
             }
 
             return part.transform;
+        }
+
+        private static void AddCabInteriorPlacementForbiddenVolume(Transform truck)
+        {
+            var volume = new GameObject("CabInteriorPlacementForbiddenVolume");
+            volume.transform.SetParent(truck, false);
+            volume.transform.localPosition = new Vector3(
+                (CabInteriorForbiddenMinX + CabInteriorForbiddenMaxX) * 0.5f,
+                CabInteriorForbiddenCenterY,
+                0f);
+
+            var collider = volume.AddComponent<BoxCollider>();
+            collider.size = new Vector3(
+                CabInteriorForbiddenMaxX - CabInteriorForbiddenMinX,
+                CabInteriorForbiddenHeight,
+                CabInteriorForbiddenWidth);
+            // 조준 Raycast는 trigger를 무시한다. 따라서 이 표식은 Chassis를 지지면으로
+            // 삼는 실제 배치 경로도 OverlapBox에서만 막고 물리·조준을 바꾸지 않는다.
+            collider.isTrigger = true;
+            volume.AddComponent<CargoPlacementForbiddenVolume>();
         }
 
         /// <summary>
