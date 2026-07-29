@@ -23,11 +23,16 @@ namespace CargoStack.Tests
         private const float BedMinZ = -BedInsideWidth * 0.5f;
         private const float BedMaxZ = BedInsideWidth * 0.5f;
 
+        private const float DriveTimeoutSeconds = 40f;
+
         private TruckMover truck;
         private Rigidbody truckBody;
         private PlayerController player;
         private PlayerRopeInteractor ropeInteractor;
         private StageContext stageContext;
+        private GameFlow flow;
+        private CargoTracker tracker;
+        private Transform bedAnchor;
         private readonly RopeSettings settings = new RopeSettings();
         private float measuredRise;
 
@@ -41,10 +46,15 @@ namespace CargoStack.Tests
             player = Object.FindFirstObjectByType<PlayerController>();
             ropeInteractor = Object.FindFirstObjectByType<PlayerRopeInteractor>();
             stageContext = Object.FindFirstObjectByType<StageContext>();
+            flow = Object.FindFirstObjectByType<GameFlow>();
+            tracker = Object.FindFirstObjectByType<CargoTracker>();
+            bedAnchor = GameObject.Find("BedAnchor").transform;
 
             Assert.NotNull(truck, "씬에 TruckMover 가 없다");
             Assert.NotNull(ropeInteractor, "플레이어에 로프 조작이 배선되지 않았다");
             Assert.NotNull(stageContext, "씬에 StageContext 가 없다");
+            Assert.NotNull(flow, "씬에 GameFlow 가 없다");
+            Assert.NotNull(tracker, "씬에 CargoTracker 가 없다");
 
             yield return null;
         }
@@ -161,6 +171,82 @@ namespace CargoStack.Tests
             yield break;
         }
 
+        /// <summary>
+        /// 로프를 걸어 둔 채 실제로 주행시킨다.
+        ///
+        /// 정지 상태에서만 재던 것이 이 장비의 사각지대였다. 트럭이 달리면 매듭은 차체를 따라
+        /// 한 스텝에 수십 cm 를 움직이는데 사슬 마디는 관성으로 뒤처진다. 이 어긋남을
+        /// 물리 법칙을 무시하고 되돌리면 마디가 순간이동하고, 그 속도 불연속이 짐을 날려 버린다.
+        /// 그래서 결과가 아니라 <b>마디의 속도</b>를 직접 본다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 주행_중에도_로프_사슬이_튀지_않는다()
+        {
+            PlaceCargoInSingleLayer();
+            yield return Settle(150);
+
+            Rope rope = Rope.Create(WallTop(BedMinZ), WallTop(BedMaxZ), settings, null);
+            Assert.NotNull(rope, "짐칸을 가로지르는 로프를 걸지 못했다");
+            yield return Settle(60);
+
+            Rigidbody[] segments = rope.GetComponentsInChildren<Rigidbody>();
+            Assert.IsNotEmpty(segments, "로프에 사슬 마디가 없다");
+
+            Time.timeScale = 3f;
+            flow.StartDriving();
+
+            float fastestSegment = 0f;
+            float remaining = DriveTimeoutSeconds;
+            while (flow.State != GameState.Result && remaining > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                foreach (Rigidbody segment in segments)
+                {
+                    if (segment != null)
+                    {
+                        fastestSegment = Mathf.Max(fastestSegment, segment.linearVelocity.magnitude);
+                    }
+                }
+
+                remaining -= Time.unscaledDeltaTime;
+            }
+
+            Debug.Log($"[CargoStack] 주행 중 로프 마디 최고 속도 {fastestSegment:0.0}m/s " +
+                $"(트럭 최고 {stageContext.Definition.MaxSpeed:0.0}m/s), 짐 {tracker.RemainingCount}/{tracker.TotalCount} 생존");
+
+            Assert.AreEqual(GameState.Result, flow.State, "로프를 건 채로 주행이 끝나지 않았다");
+            Assert.That(fastestSegment, Is.LessThan(stageContext.Definition.MaxSpeed * 2.5f),
+                "로프 사슬이 트럭보다 훨씬 빠르게 튀었다. 조인트가 마디를 순간이동시키고 있다");
+        }
+
+        /// <summary>
+        /// 지터의 실제 피해는 여기서 드러난다. 고정 장비가 짐을 지키기는커녕 날려 버리면
+        /// 로프는 없느니만 못하다. 한 층 배치는 로프 없이도 대부분 살아남는 구성이므로,
+        /// 로프를 걸고 크게 밑돌면 로프가 가해자라는 뜻이다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 로프를_건_짐이_주행_뒤에도_짐칸에_남는다()
+        {
+            PlaceCargoInSingleLayer();
+            yield return Settle(150);
+
+            Rope rope = Rope.Create(WallTop(BedMinZ), WallTop(BedMaxZ), settings, null);
+            Assert.NotNull(rope, "짐칸을 가로지르는 로프를 걸지 못했다");
+            yield return Settle(60);
+
+            Assert.AreEqual(tracker.TotalCount, tracker.RemainingCount,
+                "출발 전인데 로프를 걸었다는 이유로 짐이 이미 짐칸을 벗어났다");
+
+            Time.timeScale = 3f;
+            flow.StartDriving();
+            yield return WaitForResult();
+
+            Debug.Log($"[CargoStack] 로프 건 한 층: {tracker.RemainingCount}/{tracker.TotalCount} 생존");
+
+            Assert.That(tracker.RemainingCount, Is.GreaterThanOrEqualTo(3),
+                "로프를 걸었더니 짐이 오히려 쏟아졌다");
+        }
+
         /// <summary>짐칸 벽 윗면 한 점. 로프를 트럭에 묶는 자리다.</summary>
         private RopeAttachment WallTop(float localZ)
         {
@@ -198,6 +284,43 @@ namespace CargoStack.Tests
             }
 
             measuredRise = highest - restingHeight;
+        }
+
+        /// <summary>짐을 짐칸에 한 층으로 깐다. CoreLoopTests 의 기준 배치와 같은 자리다.</summary>
+        private void PlaceCargoInSingleLayer()
+        {
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
+            Vector3[] offsets =
+            {
+                new Vector3(-0.50f, 0.58f, -0.50f),
+                new Vector3(-0.50f, 0.58f, 0.50f),
+                new Vector3(0.50f, 0.58f, -0.50f),
+                new Vector3(0.50f, 0.58f, 0.50f),
+                new Vector3(-0.45f, 1.52f, 0f),
+                new Vector3(0.45f, 1.52f, 0f),
+            };
+
+            for (int index = 0; index < cargo.Length && index < offsets.Length; index++)
+            {
+                Rigidbody body = cargo[index].Body;
+                body.position = bedAnchor.TransformPoint(offsets[index]);
+                body.rotation = bedAnchor.rotation;
+                body.linearVelocity = Vector3.zero;
+                body.angularVelocity = Vector3.zero;
+                cargo[index].transform.SetPositionAndRotation(body.position, body.rotation);
+            }
+
+            Physics.SyncTransforms();
+        }
+
+        private IEnumerator WaitForResult()
+        {
+            float remaining = DriveTimeoutSeconds;
+            while (flow.State != GameState.Result && remaining > 0f)
+            {
+                remaining -= Time.unscaledDeltaTime;
+                yield return null;
+            }
         }
 
         private IEnumerator Settle(int fixedSteps)

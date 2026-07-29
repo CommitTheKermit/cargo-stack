@@ -13,13 +13,13 @@ namespace CargoStack
     public sealed class RopeSettings
     {
         [Tooltip("세그먼트 하나의 목표 길이. 짧을수록 로프가 부드럽지만, 마디마다 생기는 늘어남이 누적된다.")]
-        [SerializeField, Min(0.02f)] private float segmentLength = 0.26f;
+        [SerializeField, Min(0.02f)] private float segmentLength = 0.32f;
 
         [Tooltip("로프 굵기(반지름). 짐 위에 얹혔을 때 파묻히지 않을 만큼은 되어야 한다.")]
         [SerializeField, Min(0.005f)] private float radius = 0.035f;
 
         [Tooltip("로프 한 가닥 전체의 질량. 세그먼트들이 나눠 갖는다. 짐보다 지나치게 가벼우면 그냥 끌려간다.")]
-        [SerializeField, Min(0.1f)] private float totalMass = 10f;
+        [SerializeField, Min(0.1f)] private float totalMass = 14f;
 
         [Tooltip("팽팽한 선을 찾을 때 높이를 재는 간격. 촘촘할수록 짐 모서리를 정확히 탄다.")]
         [SerializeField, Min(0.02f)] private float heightSampleSpacing = 0.08f;

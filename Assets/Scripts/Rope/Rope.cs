@@ -319,6 +319,10 @@ namespace CargoStack
             // 사슬은 기본 반복 횟수로는 늘어난다. 로프에만 더 준다.
             body.solverIterations = 24;
             body.solverVelocityIterations = 8;
+
+            // 얇은 마디가 짐과 짐칸 벽 사이에 끼면 물리 엔진이 기본 10m/s 까지 속도를 줘서
+            // 밀어낸다. 그 튕겨나감이 곧바로 짐에 실리므로, 밀어내는 속도를 걷는 정도로 묶는다.
+            body.maxDepenetrationVelocity = 1.5f;
             return body;
         }
 
@@ -354,11 +358,12 @@ namespace CargoStack
             joint.angularYMotion = ConfigurableJointMotion.Free;
             joint.angularZMotion = ConfigurableJointMotion.Free;
 
-            // 사슬이 한 번 벌어지면 스스로 돌아오지 못한다. 벌어진 만큼 매 스텝 되돌린다.
-            // 마디마다 조금씩 늘어난 것이 누적되면 로프 전체가 늘어나므로 허용치를 짧게 잡는다.
-            joint.projectionMode = JointProjectionMode.PositionAndRotation;
-            joint.projectionDistance = 0.002f;
-            joint.projectionAngle = 3f;
+            // projection 을 쓰지 않는다. 벌어진 조인트를 순간이동으로 되돌리는 기능인데,
+            // 트럭이 달리면 매듭은 한 스텝에 20cm 를 따라가고 사슬 마디는 관성으로 뒤처지므로
+            // 매 스텝 허용치를 크게 넘는다. 그때마다 전 마디가 순간이동하면 속도가 불연속이 되고,
+            // 그 충격이 짐을 그대로 날려 버린다(실측 마디 속도 73.7m/s, 트럭의 7배).
+            // 정지 상태에서는 도움이 되지만 이 게임의 로프는 달리는 트럭 위에 있어야 한다.
+            joint.projectionMode = JointProjectionMode.None;
 
             joint.enablePreprocessing = false;
             joint.enableCollision = false;
