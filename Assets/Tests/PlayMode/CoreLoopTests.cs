@@ -15,7 +15,7 @@ namespace CargoStack.Tests
     public class CoreLoopTests
     {
         private const float DriveTimeoutSeconds = 40f;
-        private const int BlueTruckV2TriangleCount = 501510;
+        private const int BlueTruckV2TriangleCount = 504658;
         private const float WheelRetentionRadius = 0.535f;
         private const float WheelRetentionHalfWidth = 0.190f;
         private const float WheelMeshTolerance = 0.007f;

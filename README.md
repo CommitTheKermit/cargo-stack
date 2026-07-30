@@ -194,6 +194,23 @@ PlayMode 테스트가 같은 짐 6개를 두 방식으로 싣고 완주시킨 �
 - 몸통에 충격이 와도 1인칭 시점이 돌아가지 않는다
 - 어떻게 쌓아도 트럭이 도착선까지 간다 (급제동 골짜기가 너무 깊으면 트럭이 멈춰 선다)
 
+### BlueTruck 뒷문 FBX 다시 만들기
+
+편집 전 원본은 `SourceAssets/BlueTruck/BlueTruck.original.fbx`, Blender 작업 파일은
+`SourceAssets/BlueTruck/BlueTruckTailgate.blend`에 있다. 아래 명령은 원본을 다시 불러와
+차체와 뒷문을 닫힌 입체로 Boolean 분리하고 `Assets`의 FBX와 Blender 작업 파일을 갱신한다.
+
+```bash
+/Applications/Blender.app/Contents/MacOS/Blender \
+  --background --factory-startup \
+  --python tools/edit_blue_truck_tailgate.py
+```
+
+스크립트는 문과 차체 절단면의 열린 경계를 검사하며, 검증에 실패하면 FBX를 출력하지 않는다.
+형태만 빠르게 확인하려면 `tools/render_blue_truck_tailgate.py`로 닫힘·열림 프리뷰를
+`/tmp/cargo-stack-blender-preview`에 만들 수 있다. FBX를 갱신한 뒤에는 Unity 메뉴
+`CargoStack > 스테이지 > 모든 씬 다시 만들기`로 파생 메시와 씬을 다시 생성한다.
+
 `RopeTests`와 `RopePathSolverTests`가 로프가 표시가 아니라 실제 고정 장비인지 고정한다.
 
 - 위로 튀어 오르려는 짐을 가로 로프가 절반 이하로 눌러 앉힌다 (이게 깨지면 로프는 화면에만 있는 것이다)

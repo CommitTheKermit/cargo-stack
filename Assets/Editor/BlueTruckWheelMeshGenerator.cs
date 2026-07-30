@@ -9,8 +9,8 @@ using Object = UnityEngine.Object;
 namespace CargoStack.EditorTools
 {
     /// <summary>
-    /// 단일 BlueTruck FBX를 런타임 분석 없이 차체, 테일게이트, 실제 바퀴 네 개로 결정적으로 분리한다.
-    /// 테일게이트의 계측 영역과 바퀴 축 주변의 원통형 영역으로 모든 삼각형을 정확히 한 파트에만 배정한다.
+    /// Blender에서 닫힌 입체로 분리한 BlueTruck 차체/테일게이트를 가져오고,
+    /// 차체에 남은 실제 바퀴 네 개를 결정적으로 분리한다.
     /// </summary>
     public static class BlueTruckWheelMeshGenerator
     {
@@ -18,17 +18,11 @@ namespace CargoStack.EditorTools
         public const string BodyMeshPath = GeneratedFolder + "/BlueTruckBody.asset";
         public const string TailgateMeshPath = GeneratedFolder + "/BlueTruckTailgate.asset";
         public const float WheelRadius = 0.515f;
-        public const int SourceTriangleCount = 501510;
+        public const int SourceTriangleCount = 504658;
         public static readonly Vector3 TailgatePivot = new(-3.04f, 0.20f, 0f);
 
         private const string SourceModelPath = "Assets/Art/Vehicles/BlueTruck/BlueTruck.fbx";
         private const float SourceScale = 6.2002f;
-        // BlueTruck v2의 후면 판넬을 Truck 로컬 좌표에서 계측한 영역이다. 긴 삼각형의
-        // 일부가 차체에서 뜯겨 나오지 않도록 세 꼭짓점이 전부 영역 안에 들어올 때만 문으로 분리한다.
-        private const float TailgateMaximumX = -2.90f;
-        private const float TailgateMinimumY = 0.14f;
-        private const float TailgateMaximumY = 0.94f;
-        private const float TailgateHalfWidth = 1.16f;
         // A centroid-only test previously put long body triangles into the wheel meshes.
         // Assign a triangle to a wheel only when its complete geometry fits this envelope.
         public const float WheelRetentionRadius = 0.535f;
@@ -62,6 +56,30 @@ namespace CargoStack.EditorTools
         public static string WheelMeshPath(int index) =>
             $"{GeneratedFolder}/BlueTruckWheel_{WheelNames[index]}.asset";
 
+        [MenuItem("CargoStack/BlueTruck FBX 구조 출력")]
+        public static void LogSourceLayout()
+        {
+            GameObject sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SourceModelPath)
+                ?? throw new InvalidOperationException($"BlueTruck FBX를 찾지 못했다: {SourceModelPath}");
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(sourcePrefab);
+            try
+            {
+                foreach (MeshFilter filter in instance.GetComponentsInChildren<MeshFilter>(true))
+                {
+                    Debug.Log(
+                        $"[CargoStack] FBX {filter.name}: localPosition={filter.transform.localPosition}, "
+                        + $"localRotation={filter.transform.localEulerAngles}, "
+                        + $"localScale={filter.transform.localScale}, bounds={filter.sharedMesh.bounds}, "
+                        + $"vertices={filter.sharedMesh.vertexCount}, "
+                        + $"triangles={filter.sharedMesh.triangles.Length / 3}");
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(instance);
+            }
+        }
+
         public static void Generate()
         {
             Directory.CreateDirectory(GeneratedFolder);
@@ -70,48 +88,70 @@ namespace CargoStack.EditorTools
             GameObject sourcePrefab = AssetDatabase.LoadAssetAtPath<GameObject>(SourceModelPath)
                 ?? throw new InvalidOperationException($"BlueTruck FBX를 찾지 못했다: {SourceModelPath}");
             GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(sourcePrefab);
+            // Blender가 Y-up FBX로 내보내므로 높이 축 보정은 Unity 임포터 자식 Transform에
+            // 이미 들어 있다. 여기서는 차량 길이를 게임 진행 방향 +X로 돌리기만 한다.
             instance.transform.SetPositionAndRotation(
                 new Vector3(0f, -0.75f, 0f),
-                Quaternion.Euler(0f, 90f, 0f) * Quaternion.Euler(-90f, 0f, 0f));
+                Quaternion.Euler(0f, 90f, 0f));
             instance.transform.localScale = Vector3.one * SourceScale;
 
             try
             {
-                MeshFilter sourceFilter = instance.GetComponentInChildren<MeshFilter>(true)
-                    ?? throw new InvalidOperationException("BlueTruck FBX에 MeshFilter가 없다");
-                Mesh source = sourceFilter.sharedMesh;
-                if (source.subMeshCount < 1)
+                MeshFilter bodyFilter = FindSourceFilter(instance, "BlueTruckBody");
+                MeshFilter tailgateFilter = FindSourceFilter(instance, "BlueTruckTailgate");
+                Mesh bodySource = bodyFilter.sharedMesh;
+                Mesh tailgateSource = tailgateFilter.sharedMesh;
+                if (bodySource.subMeshCount < 1 || tailgateSource.subMeshCount < 1)
                 {
                     throw new InvalidOperationException("BlueTruck FBX에 submesh가 없다");
                 }
 
-                var sourceData = new SourceMeshData(source, sourceFilter.transform.localToWorldMatrix);
-                WheelPivots = MeasureWheelPivots(sourceData.Positions);
+                var bodySourceData =
+                    new SourceMeshData(bodySource, bodyFilter.transform.localToWorldMatrix);
+                var tailgateSourceData =
+                    new SourceMeshData(tailgateSource, tailgateFilter.transform.localToWorldMatrix);
+                WheelPivots = MeasureWheelPivots(bodySourceData.Positions);
                 var parts = new PartMeshData[6];
-                parts[0] = new PartMeshData("BlueTruckBody", Vector3.zero, sourceData);
-                parts[1] = new PartMeshData("BlueTruckTailgate", TailgatePivot, sourceData);
+                parts[0] = new PartMeshData("BlueTruckBody", Vector3.zero, bodySourceData);
+                parts[1] =
+                    new PartMeshData("BlueTruckTailgate", TailgatePivot, tailgateSourceData);
                 for (int wheelIndex = 0; wheelIndex < 4; wheelIndex++)
                 {
                     parts[wheelIndex + 2] = new PartMeshData(
                         $"BlueTruckWheel_{WheelNames[wheelIndex]}",
                         WheelPivots[wheelIndex],
-                        sourceData);
+                        bodySourceData);
                 }
 
                 int assignedTriangles = 0;
-                for (int subMesh = 0; subMesh < source.subMeshCount; subMesh++)
+                for (int subMesh = 0; subMesh < bodySource.subMeshCount; subMesh++)
                 {
-                    int[] indices = source.GetIndices(subMesh);
+                    int[] indices = bodySource.GetIndices(subMesh);
                     for (int index = 0; index < indices.Length; index += 3)
                     {
                         int a = indices[index];
                         int b = indices[index + 1];
                         int c = indices[index + 2];
-                        int partIndex = FindPart(
-                            sourceData.Positions[a],
-                            sourceData.Positions[b],
-                            sourceData.Positions[c]);
+                        int wheelIndex = FindWheelZone(
+                            bodySourceData.Positions[a],
+                            bodySourceData.Positions[b],
+                            bodySourceData.Positions[c]);
+                        int partIndex = wheelIndex < 0 ? 0 : wheelIndex + 2;
                         parts[partIndex].AddTriangle(subMesh, a, b, c);
+                        assignedTriangles++;
+                    }
+                }
+
+                for (int subMesh = 0; subMesh < tailgateSource.subMeshCount; subMesh++)
+                {
+                    int[] indices = tailgateSource.GetIndices(subMesh);
+                    for (int index = 0; index < indices.Length; index += 3)
+                    {
+                        parts[1].AddTriangle(
+                            subMesh,
+                            indices[index],
+                            indices[index + 1],
+                            indices[index + 2]);
                         assignedTriangles++;
                     }
                 }
@@ -150,25 +190,18 @@ namespace CargoStack.EditorTools
             AssetDatabase.SaveAssets();
         }
 
-        private static int FindPart(Vector3 a, Vector3 b, Vector3 c)
+        private static MeshFilter FindSourceFilter(GameObject instance, string objectName)
         {
-            if (IsInsideTailgateEnvelope(a)
-                && IsInsideTailgateEnvelope(b)
-                && IsInsideTailgateEnvelope(c))
+            foreach (MeshFilter filter in instance.GetComponentsInChildren<MeshFilter>(true))
             {
-                return 1;
+                if (filter.name == objectName)
+                {
+                    return filter;
+                }
             }
 
-            int wheelIndex = FindWheelZone(a, b, c);
-            return wheelIndex < 0 ? 0 : wheelIndex + 2;
-        }
-
-        private static bool IsInsideTailgateEnvelope(Vector3 point)
-        {
-            return point.x <= TailgateMaximumX
-                && point.y >= TailgateMinimumY
-                && point.y <= TailgateMaximumY
-                && Mathf.Abs(point.z) <= TailgateHalfWidth;
+            throw new InvalidOperationException(
+                $"BlueTruck FBX에서 {objectName} MeshFilter를 찾지 못했다");
         }
 
         private static int FindWheelZone(Vector3 a, Vector3 b, Vector3 c)

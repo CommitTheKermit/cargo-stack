@@ -56,6 +56,13 @@ def main() -> None:
             f"TOPOLOGY edges={len(mesh.edges)} boundary={boundary_edges} "
             f"non_manifold={non_manifold_edges} volume={mesh.calc_volume():.9f}"
         )
+        for edge in [item for item in mesh.edges if item.is_boundary][:20]:
+            print(
+                "BOUNDARY "
+                + obj.name
+                + " "
+                + " -> ".join(vector_text(vertex.co) for vertex in edge.verts)
+            )
         mesh.free()
 
 

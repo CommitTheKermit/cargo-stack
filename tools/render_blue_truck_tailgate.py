@@ -77,6 +77,8 @@ def main() -> None:
     scene.display.shading.curvature_valley_factor = 1.2
     scene.display.shading.background_type = "WORLD"
     scene.display.shading.show_specular_highlight = True
+    if scene.world is None:
+        scene.world = bpy.data.worlds.new("PreviewWorld")
     scene.world.color = (0.12, 0.16, 0.20)
     scene.render.resolution_x = 1280
     scene.render.resolution_y = 720

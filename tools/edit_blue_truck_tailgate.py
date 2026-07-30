@@ -169,6 +169,12 @@ def repair_boolean_topology(obj: bpy.types.Object) -> None:
         bmesh.ops.holes_fill(mesh, edges=boundary_edges, sides=0)
 
     bmesh.ops.recalc_face_normals(mesh, faces=list(mesh.faces))
+    bmesh.ops.triangulate(
+        mesh,
+        faces=list(mesh.faces),
+        quad_method="BEAUTY",
+        ngon_method="BEAUTY",
+    )
     mesh.to_mesh(obj.data)
     obj.data.update()
     mesh.free()
