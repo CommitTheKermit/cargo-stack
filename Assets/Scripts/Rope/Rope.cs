@@ -123,7 +123,7 @@ namespace CargoStack
                         new Vector3(groundSample.x, probeHeight, groundSample.z),
                         probeHeight - emptyHeight,
                         ignoredColliders,
-                        settings.Radius,
+                        settings.Radius - settings.GripDepth,
                         emptyHeight);
                 }
 
@@ -142,11 +142,16 @@ namespace CargoStack
         /// 한 지점 위에서 아래로 광선을 쏴 로프가 얹힐 높이를 잰다.
         /// 아무것도 없으면 <paramref name="emptyHeight"/> 를 준다.
         /// </summary>
+        /// <param name="surfaceOffset">
+        /// 표면에서 로프 중심선까지 띄울 거리. 굵기의 절반보다 짧게 주면 로프가 그만큼
+        /// 표면을 물고 들어간 상태로 만들어지고, 물리가 그 파묻힘을 밀어내려는 힘이
+        /// 곧 짐을 누르는 힘이 된다.
+        /// </param>
         private static float MeasureSurfaceHeight(
             Vector3 origin,
             float distance,
             IReadOnlyList<Collider> ignoredColliders,
-            float ropeRadius,
+            float surfaceOffset,
             float emptyHeight)
         {
             // 미리보기가 매 프레임 이 선을 다시 풀기 때문에 할당 없는 판정을 쓴다.
@@ -172,8 +177,7 @@ namespace CargoStack
                 found = true;
             }
 
-            // 표면에 파묻히지 않도록 굵기의 절반만큼 띄운다.
-            return found ? highest + ropeRadius : emptyHeight;
+            return found ? highest + surfaceOffset : emptyHeight;
         }
 
         private static bool ShouldIgnore(Collider candidate, IReadOnlyList<Collider> ignoredColliders)
@@ -340,6 +344,11 @@ namespace CargoStack
         /// <summary>
         /// 한 점에서 두 강체를 붙인다. 위치는 잠그고 회전만 열어 둔 조인트라,
         /// 로프는 자유롭게 꺾이되 늘어나지는 않는다.
+        ///
+        /// 매듭 자리를 어긋나게 잡아 장력을 주는 방법은 쓰지 않는다. 위치를 잠근 조인트에
+        /// 만족할 수 없는 목표를 주면 솔버가 매 스텝 최대 힘을 내며 진동하고, 그 진동이
+        /// 짐을 누르기는커녕 밀어낸다(실측: 위로 튄 높이가 0.057m 에서 0.329m 로 나빠졌다).
+        /// 누르는 힘은 <see cref="RopeSettings.GripDepth"/> 의 접촉으로 만든다.
         /// </summary>
         private static void LockTogether(Rigidbody body, Vector3 worldAnchor, Rigidbody connectedBody)
         {
@@ -368,6 +377,7 @@ namespace CargoStack
             joint.enablePreprocessing = false;
             joint.enableCollision = false;
         }
+
 
         /// <summary>
         /// 로프가 자기 자신과 부딪히지 않게 한다. 사슬 마디끼리 밀어내면 로프가 튀어 오른다.
@@ -444,7 +454,13 @@ namespace CargoStack
             for (int index = 0; index < segments.Count - 1; index++)
             {
                 // 이웃한 두 마디가 만나는 자리가 곧 매듭이다.
-                line.SetPosition(index + 1, (segments[index].position + segments[index + 1].position) * 0.5f);
+                //
+                // Rigidbody.position 이 아니라 transform.position 을 읽는다. 앞의 것은 마지막 물리
+                // 스텝의 위치라 50Hz 로 계단처럼 튀고, 화면은 그보다 자주 그려지므로 로프가 떨려
+                // 보인다. 마디에 켜 둔 보간의 결과는 transform 에만 반영된다.
+                line.SetPosition(
+                    index + 1,
+                    (segments[index].transform.position + segments[index + 1].transform.position) * 0.5f);
             }
 
             line.SetPosition(segments.Count, end.WorldPoint);

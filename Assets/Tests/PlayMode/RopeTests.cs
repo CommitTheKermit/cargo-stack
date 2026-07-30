@@ -20,8 +20,12 @@ namespace CargoStack.Tests
         private const float BedFloorTop = 0.20f;
         private const float BedInsideWidth = 2.26f;
         private const float BedWallHeight = 0.70f;
+        private const float BedInsideLength = 2.29f;
+        private const float BedFrontBarrierX = -0.64f;
+        private const float BedFrontBarrierHeight = 0.68f;
         private const float BedMinZ = -BedInsideWidth * 0.5f;
         private const float BedMaxZ = BedInsideWidth * 0.5f;
+        private const float BedMinX = BedCenterX - BedInsideLength * 0.5f;
 
         private const float DriveTimeoutSeconds = 40f;
 
@@ -35,6 +39,7 @@ namespace CargoStack.Tests
         private Transform bedAnchor;
         private readonly RopeSettings settings = new RopeSettings();
         private float measuredRise;
+        private float measuredSlide;
 
         [UnitySetUp]
         public IEnumerator SetUp()
@@ -172,6 +177,53 @@ namespace CargoStack.Tests
         }
 
         /// <summary>
+        /// 급제동에 짐이 앞으로 쏟아지는 것을 <b>진행 방향으로 건</b> 로프가 막는지 본다.
+        ///
+        /// 가로로 건 로프와 세로로 건 로프의 구실이 다르다. 이것을 혼동해 처음에는
+        /// 가로 로프가 앞뒤 미끄러짐도 막을 것으로 기대했지만, 가로 로프는 짐 윗면을 거의
+        /// 수평으로 지나므로 장력의 수직 성분이 모서리 두 곳에만 걸린다. 앞뒤로는 마찰만
+        /// 조금 보탤 뿐이다(실측 3% 감소).
+        ///
+        /// 앞뒤를 막는 것은 진행 방향 로프다. 짐이 앞으로 가려면 뒤쪽 구간이 늘어나야 하는데
+        /// 양 끝이 차체에 묶여 있어 늘어날 수 없다. 마찰이 아니라 기하학이 막는 것이라
+        /// 훨씬 강하게 걸린다.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator 진행_방향으로_건_로프는_앞으로_쏟아지는_짐을_막는다()
+        {
+            Cargo cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID)[0];
+            Rigidbody body = cargo.Body;
+
+            PlaceOnBedCenter(cargo);
+            yield return Settle(60);
+            Vector3 restingPosition = body.position;
+
+            // 대조군: 로프 없이 짐을 앞으로 밀어 본다.
+            yield return PushForwardAndMeasure(body, restingPosition);
+            float freeSlide = measuredSlide;
+
+            PlaceOnBedCenter(cargo);
+            yield return Settle(60);
+
+            Rope rope = Rope.Create(RearWallTop(), FrontBarrierTop(), settings, null);
+            Assert.NotNull(rope, "짐칸을 앞뒤로 가로지르는 로프를 걸지 못했다");
+            yield return Settle(60);
+
+            yield return PushForwardAndMeasure(body, restingPosition);
+            float tiedSlide = measuredSlide;
+
+            Debug.Log($"[CargoStack] 앞으로 밀린 거리 - 로프 없음 {freeSlide:0.000}m, " +
+                $"진행 방향 로프 {tiedSlide:0.000}m");
+
+            Assert.That(freeSlide, Is.GreaterThan(0.05f),
+                "대조군이 밀리지도 않았다. 이 시험으로는 로프 효과를 잴 수 없다");
+            Assert.That(tiedSlide, Is.LessThan(freeSlide * 0.7f),
+                "진행 방향으로 걸었는데도 짐이 그대로 쏟아졌다");
+
+            rope.Remove();
+        }
+
+        /// <summary>
         /// 로프를 걸어 둔 채 실제로 주행시킨다.
         ///
         /// 정지 상태에서만 재던 것이 이 장비의 사각지대였다. 트럭이 달리면 매듭은 차체를 따라
@@ -247,12 +299,29 @@ namespace CargoStack.Tests
                 "로프를 걸었더니 짐이 오히려 쏟아졌다");
         }
 
-        /// <summary>짐칸 벽 윗면 한 점. 로프를 트럭에 묶는 자리다.</summary>
+        /// <summary>짐칸 좌우 벽 윗면 한 점. 짐을 가로질러 누르는 로프를 묶는 자리다.</summary>
         private RopeAttachment WallTop(float localZ)
         {
             return RopeAttachment.At(
                 truckBody,
                 truck.transform.TransformPoint(new Vector3(BedCenterX, BedFloorTop + BedWallHeight, localZ)));
+        }
+
+        /// <summary>짐칸 뒷벽 윗면. 진행 방향으로 거는 로프의 뒤쪽 매듭이다.</summary>
+        private RopeAttachment RearWallTop()
+        {
+            return RopeAttachment.At(
+                truckBody,
+                truck.transform.TransformPoint(new Vector3(BedMinX, BedFloorTop + BedWallHeight, 0f)));
+        }
+
+        /// <summary>앞 격벽 윗면. 진행 방향으로 거는 로프의 앞쪽 매듭이다.</summary>
+        private RopeAttachment FrontBarrierTop()
+        {
+            return RopeAttachment.At(
+                truckBody,
+                truck.transform.TransformPoint(
+                    new Vector3(BedFrontBarrierX, BedFloorTop + BedFrontBarrierHeight, 0f)));
         }
 
         private void PlaceOnBedCenter(Cargo cargo)
@@ -268,6 +337,29 @@ namespace CargoStack.Tests
             body.angularVelocity = Vector3.zero;
             cargo.transform.SetPositionAndRotation(body.position, body.rotation);
             Physics.SyncTransforms();
+        }
+
+        /// <summary>
+        /// 짐을 트럭 앞쪽으로 밀어 보고 얼마나 밀려났는지 <see cref="measuredSlide"/> 에 남긴다.
+        /// 급제동으로 짐이 앞으로 쏟아지는 상황을 흉내 낸 것이다.
+        /// </summary>
+        private IEnumerator PushForwardAndMeasure(Rigidbody body, Vector3 restingPosition)
+        {
+            // 트럭의 앞은 로컬 +X 다. 마찰 한계를 넘길 만큼만 민다.
+            body.linearVelocity = truck.transform.right * 2.5f;
+            body.angularVelocity = Vector3.zero;
+
+            float furthest = 0f;
+            for (int step = 0; step < 60; step++)
+            {
+                yield return new WaitForFixedUpdate();
+
+                // 앞으로 간 거리만 잰다. 위아래로 튄 것은 여기서 관심이 아니다.
+                Vector3 travel = body.position - restingPosition;
+                furthest = Mathf.Max(furthest, Vector3.Dot(travel, truck.transform.right));
+            }
+
+            measuredSlide = furthest;
         }
 
         /// <summary>짐을 위로 튀겨 보고 가장 높이 올라간 지점을 <see cref="measuredRise"/> 에 남긴다.</summary>
