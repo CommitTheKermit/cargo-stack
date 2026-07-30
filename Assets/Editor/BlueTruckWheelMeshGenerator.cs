@@ -9,18 +9,26 @@ using Object = UnityEngine.Object;
 namespace CargoStack.EditorTools
 {
     /// <summary>
-    /// 단일 BlueTruck FBX를 런타임 분석 없이 차체와 실제 바퀴 네 개로 결정적으로 분리한다.
-    /// 바퀴 축 주변의 원통형 영역으로 모든 삼각형을 정확히 한 파트에만 배정한다.
+    /// 단일 BlueTruck FBX를 런타임 분석 없이 차체, 테일게이트, 실제 바퀴 네 개로 결정적으로 분리한다.
+    /// 테일게이트의 계측 영역과 바퀴 축 주변의 원통형 영역으로 모든 삼각형을 정확히 한 파트에만 배정한다.
     /// </summary>
     public static class BlueTruckWheelMeshGenerator
     {
         public const string GeneratedFolder = "Assets/Art/Vehicles/BlueTruck/Generated";
         public const string BodyMeshPath = GeneratedFolder + "/BlueTruckBody.asset";
+        public const string TailgateMeshPath = GeneratedFolder + "/BlueTruckTailgate.asset";
         public const float WheelRadius = 0.515f;
         public const int SourceTriangleCount = 501510;
+        public static readonly Vector3 TailgatePivot = new(-3.04f, 0.20f, 0f);
 
         private const string SourceModelPath = "Assets/Art/Vehicles/BlueTruck/BlueTruck.fbx";
         private const float SourceScale = 6.2002f;
+        // BlueTruck v2의 후면 판넬을 Truck 로컬 좌표에서 계측한 영역이다. 긴 삼각형의
+        // 일부가 차체에서 뜯겨 나오지 않도록 세 꼭짓점이 전부 영역 안에 들어올 때만 문으로 분리한다.
+        private const float TailgateMaximumX = -2.90f;
+        private const float TailgateMinimumY = 0.14f;
+        private const float TailgateMaximumY = 0.94f;
+        private const float TailgateHalfWidth = 1.16f;
         // A centroid-only test previously put long body triangles into the wheel meshes.
         // Assign a triangle to a wheel only when its complete geometry fits this envelope.
         public const float WheelRetentionRadius = 0.535f;
@@ -79,11 +87,12 @@ namespace CargoStack.EditorTools
 
                 var sourceData = new SourceMeshData(source, sourceFilter.transform.localToWorldMatrix);
                 WheelPivots = MeasureWheelPivots(sourceData.Positions);
-                var parts = new PartMeshData[5];
+                var parts = new PartMeshData[6];
                 parts[0] = new PartMeshData("BlueTruckBody", Vector3.zero, sourceData);
+                parts[1] = new PartMeshData("BlueTruckTailgate", TailgatePivot, sourceData);
                 for (int wheelIndex = 0; wheelIndex < 4; wheelIndex++)
                 {
-                    parts[wheelIndex + 1] = new PartMeshData(
+                    parts[wheelIndex + 2] = new PartMeshData(
                         $"BlueTruckWheel_{WheelNames[wheelIndex]}",
                         WheelPivots[wheelIndex],
                         sourceData);
@@ -98,11 +107,11 @@ namespace CargoStack.EditorTools
                         int a = indices[index];
                         int b = indices[index + 1];
                         int c = indices[index + 2];
-                        int wheelIndex = FindWheelZone(
+                        int partIndex = FindPart(
                             sourceData.Positions[a],
                             sourceData.Positions[b],
                             sourceData.Positions[c]);
-                        parts[wheelIndex + 1].AddTriangle(subMesh, a, b, c);
+                        parts[partIndex].AddTriangle(subMesh, a, b, c);
                         assignedTriangles++;
                     }
                 }
@@ -114,23 +123,24 @@ namespace CargoStack.EditorTools
                 }
 
                 SaveMesh(BodyMeshPath, parts[0].Build());
+                SaveMesh(TailgateMeshPath, parts[1].Build());
                 for (int wheelIndex = 0; wheelIndex < 4; wheelIndex++)
                 {
-                    SaveMesh(WheelMeshPath(wheelIndex), parts[wheelIndex + 1].Build());
+                    SaveMesh(WheelMeshPath(wheelIndex), parts[wheelIndex + 2].Build());
                 }
 
                 int wheelTriangles = 0;
                 for (int wheelIndex = 0; wheelIndex < 4; wheelIndex++)
                 {
-                    wheelTriangles += parts[wheelIndex + 1].TriangleCount;
+                    wheelTriangles += parts[wheelIndex + 2].TriangleCount;
                     Debug.Log(
                         $"[CargoStack] BlueTruck {WheelNames[wheelIndex]} wheel: " +
-                        $"{parts[wheelIndex + 1].TriangleCount} triangles");
+                        $"{parts[wheelIndex + 2].TriangleCount} triangles");
                 }
 
                 Debug.Log(
-                    $"[CargoStack] BlueTruck wheel mesh 생성 완료: body={parts[0].TriangleCount}, " +
-                    $"wheels={wheelTriangles}, total={assignedTriangles}");
+                    $"[CargoStack] BlueTruck 파트 메시 생성 완료: body={parts[0].TriangleCount}, " +
+                    $"tailgate={parts[1].TriangleCount}, wheels={wheelTriangles}, total={assignedTriangles}");
             }
             finally
             {
@@ -138,6 +148,27 @@ namespace CargoStack.EditorTools
             }
 
             AssetDatabase.SaveAssets();
+        }
+
+        private static int FindPart(Vector3 a, Vector3 b, Vector3 c)
+        {
+            if (IsInsideTailgateEnvelope(a)
+                && IsInsideTailgateEnvelope(b)
+                && IsInsideTailgateEnvelope(c))
+            {
+                return 1;
+            }
+
+            int wheelIndex = FindWheelZone(a, b, c);
+            return wheelIndex < 0 ? 0 : wheelIndex + 2;
+        }
+
+        private static bool IsInsideTailgateEnvelope(Vector3 point)
+        {
+            return point.x <= TailgateMaximumX
+                && point.y >= TailgateMinimumY
+                && point.y <= TailgateMaximumY
+                && Mathf.Abs(point.z) <= TailgateHalfWidth;
         }
 
         private static int FindWheelZone(Vector3 a, Vector3 b, Vector3 c)

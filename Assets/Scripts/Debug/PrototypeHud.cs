@@ -51,7 +51,7 @@ namespace CargoStack
             if (flow.State == GameState.Loading)
             {
                 GUILayout.Label("WASD 이동   마우스 시점   Space 점프", labelStyle);
-                GUILayout.Label("E 집기·놓기   Q 회전", labelStyle);
+                GUILayout.Label("E 집기·놓기·뒷문   Q 회전", labelStyle);
                 GUILayout.Label("R 로프 걸기   X 로프 걷기", labelStyle);
                 GUILayout.Label("Enter 출발   Backspace 재시작", labelStyle);
                 GUILayout.Label("Esc 스테이지 선택   Tab 커서 풀기", labelStyle);

@@ -224,7 +224,8 @@ namespace CargoStack.EditorTools
                 bedMaterial,
                 bedPhysics,
                 groundLayer,
-                out Transform bedAnchor);
+                out Transform bedAnchor,
+                out TruckTailgate tailgate);
             var mover = truck.GetComponent<TruckMover>();
             ConfigureTruckAudio(truck);
 
@@ -281,7 +282,8 @@ namespace CargoStack.EditorTools
                 wiring.Ref("truck", mover)
                     .Ref("tracker", tracker)
                     .Ref("cameraDirector", director)
-                    .Ref("player", player);
+                    .Ref("player", player)
+                    .Ref("tailgate", tailgate);
             }
 
             using (var wiring = new Wiring(hud))
@@ -459,7 +461,8 @@ namespace CargoStack.EditorTools
             Material bedMaterial,
             PhysicsMaterial bedPhysics,
             int groundLayer,
-            out Transform bedAnchor)
+            out Transform bedAnchor,
+            out TruckTailgate tailgate)
         {
             // 자리는 배선이 끝난 뒤 TruckMover.SnapToStart 가 경로에서 잡아 준다.
             var truck = new GameObject("Truck");
@@ -480,7 +483,6 @@ namespace CargoStack.EditorTools
 
             float bedLengthWithWalls = BedInsideLength + BedWallThickness * 2f;
             float wallCenterY = BedFloorTop + BedWallHeight * 0.5f;
-            float minX = BedCenterX - BedInsideLength * 0.5f;
             float minZ = BedCenterZ - BedInsideWidth * 0.5f;
             float maxZ = BedCenterZ + BedInsideWidth * 0.5f;
 
@@ -509,10 +511,15 @@ namespace CargoStack.EditorTools
                 bedMaterial,
                 bedPhysics,
                 false);
-            AddPart(
+            Transform tailgatePivot = CreatePoint(
+                "TailgatePivot",
                 truck.transform,
+                BlueTruckWheelMeshGenerator.TailgatePivot);
+            tailgate = tailgatePivot.gameObject.AddComponent<TruckTailgate>();
+            AddPart(
+                tailgatePivot,
                 "BedWall_Rear",
-                new Vector3(minX - BedWallThickness * 0.5f, wallCenterY, BedCenterZ),
+                new Vector3(0f, BedWallHeight * 0.5f, BedCenterZ),
                 new Vector3(BedWallThickness, BedWallHeight, BedInsideWidth),
                 bedMaterial,
                 bedPhysics,
@@ -530,7 +537,7 @@ namespace CargoStack.EditorTools
                 "BedAnchor",
                 truck.transform,
                 new Vector3(BedCenterX, BedFloorTop, BedCenterZ));
-            AddBlueTruckVisual(truck.transform, groundLayer);
+            AddBlueTruckVisual(truck.transform, tailgatePivot, groundLayer);
             return truck;
         }
 
@@ -560,7 +567,10 @@ namespace CargoStack.EditorTools
                     + "tools/generate_prototype_audio.py를 먼저 실행한다.");
         }
 
-        private static void AddBlueTruckVisual(Transform truck, int groundLayer)
+        private static void AddBlueTruckVisual(
+            Transform truck,
+            Transform tailgatePivot,
+            int groundLayer)
         {
             BlueTruckWheelMeshGenerator.Generate();
             Material material = EnsureBlueTruckMaterial();
@@ -571,6 +581,11 @@ namespace CargoStack.EditorTools
                 visual.transform,
                 "BlueTruckBody",
                 BlueTruckWheelMeshGenerator.BodyMeshPath,
+                material);
+            AddGeneratedMesh(
+                tailgatePivot,
+                "BlueTruckTailgate",
+                BlueTruckWheelMeshGenerator.TailgateMeshPath,
                 material);
 
             var suspensionRoots = new Transform[4];
@@ -960,6 +975,9 @@ namespace CargoStack.EditorTools
 
             PlayerCargoInteractor interactor = player.AddComponent<PlayerCargoInteractor>();
             interactor.Configure(carryAnchor, firstPersonCamera);
+            PlayerTailgateInteractor tailgateInteractor =
+                player.AddComponent<PlayerTailgateInteractor>();
+            tailgateInteractor.Configure(firstPersonCamera);
 
             // 사거리는 원본 스파이크의 기본값을 쓰지 않고 여기서 덮어쓴다.
             // 복사해 온 파일을 그대로 두어야 출처 표기가 사실로 남고, 튜닝 값은 레벨 데이터와 함께 모인다.

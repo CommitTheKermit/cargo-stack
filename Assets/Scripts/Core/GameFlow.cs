@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -17,10 +18,13 @@ namespace CargoStack
 
         [Tooltip("적재를 담당하는 1인칭 플레이어. 출발하면 통째로 비활성화된다.")]
         [SerializeField] private GameObject player;
+        [SerializeField] private TruckTailgate tailgate;
 
         public GameState State { get; private set; } = GameState.Loading;
 
         public event Action<GameState> StateChanged;
+
+        private Coroutine pendingDrive;
 
         private void OnEnable()
         {
@@ -48,9 +52,19 @@ namespace CargoStack
         /// <summary>적재를 마치고 출발시킨다. 적재 단계에서만 유효하다.</summary>
         public void StartDriving()
         {
-            if (State != GameState.Loading)
+            if (State != GameState.Loading || pendingDrive != null)
             {
                 return;
+            }
+
+            if (tailgate != null)
+            {
+                tailgate.CloseForDriving();
+                if (!tailgate.IsClosed)
+                {
+                    pendingDrive = StartCoroutine(CloseTailgateThenDrive());
+                    return;
+                }
             }
 
             SetState(GameState.Driving);
@@ -74,6 +88,20 @@ namespace CargoStack
             }
 
             SetState(GameState.Result);
+        }
+
+        private IEnumerator CloseTailgateThenDrive()
+        {
+            while (State == GameState.Loading && !tailgate.IsClosed)
+            {
+                yield return null;
+            }
+
+            pendingDrive = null;
+            if (State == GameState.Loading)
+            {
+                SetState(GameState.Driving);
+            }
         }
 
         private void SetState(GameState next)

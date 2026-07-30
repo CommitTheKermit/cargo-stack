@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -34,6 +35,8 @@ namespace CargoStack.Tests
         private const float BedMaxZ = BedInsideWidth * 0.5f;
         private const float FrontCargoLimit = BedFrontBarrierX - BedWallThickness * 0.5f;
         private const float CabInteriorForbiddenMinX = BedFrontBarrierX + BedWallThickness * 0.5f;
+        private static readonly Vector3 TailgatePivotPosition =
+            new(BedMinX - BedWallThickness * 0.5f, BedFloorTop, 0f);
         private GameFlow flow;
         private CargoTracker tracker;
         private TruckMover truck;
@@ -41,6 +44,8 @@ namespace CargoStack.Tests
         private PlayerCargoInteractor interactor;
         private Transform bedAnchor;
         private TruckWheelAnimator wheelAnimator;
+        private TruckTailgate tailgate;
+        private PlayerTailgateInteractor tailgateInteractor;
         private StageContext stageContext;
 
         [UnitySetUp]
@@ -55,6 +60,8 @@ namespace CargoStack.Tests
             interactor = Object.FindFirstObjectByType<PlayerCargoInteractor>();
             bedAnchor = GameObject.Find("BedAnchor").transform;
             wheelAnimator = truck.GetComponent<TruckWheelAnimator>();
+            tailgate = truck.GetComponentInChildren<TruckTailgate>();
+            tailgateInteractor = player.GetComponent<PlayerTailgateInteractor>();
             stageContext = Object.FindFirstObjectByType<StageContext>();
 
             Assert.NotNull(flow, "씬에 GameFlow 가 없다");
@@ -64,6 +71,8 @@ namespace CargoStack.Tests
             Assert.NotNull(interactor, "씬에 PlayerCargoInteractor 가 없다");
             Assert.NotNull(bedAnchor, "씬에 BedAnchor 가 없다");
             Assert.NotNull(wheelAnimator, "Truck 루트에 바퀴 시각 애니메이터가 없다");
+            Assert.NotNull(tailgate, "Truck에 테일게이트가 없다");
+            Assert.NotNull(tailgateInteractor, "플레이어에 테일게이트 조작이 배선되지 않았다");
             Assert.NotNull(stageContext, "씬에 StageContext 가 없다");
             Assert.NotNull(stageContext.Definition, "StageContext에 스테이지 정의가 없다");
 
@@ -258,8 +267,11 @@ namespace CargoStack.Tests
                 "BlueTruck 시각물에 공유 물리와 겹치는 Rigidbody가 남아 있다");
             Assert.IsEmpty(visual.GetComponentsInChildren<MonoBehaviour>(true),
                 "BlueTruck 시각물에 외부 차량 제어 스크립트가 남아 있다");
-            MeshFilter[] meshFilters = visual.GetComponentsInChildren<MeshFilter>(true);
-            Assert.AreEqual(5, meshFilters.Length, "차체와 실제 바퀴 네 개 이외의 메시가 남아 있다");
+            var meshFilters = new List<MeshFilter>(
+                visual.GetComponentsInChildren<MeshFilter>(true));
+            meshFilters.Add(
+                tailgate.transform.Find("BlueTruckTailgate").GetComponent<MeshFilter>());
+            Assert.AreEqual(6, meshFilters.Count, "차체, 테일게이트와 실제 바퀴 네 개 이외의 메시가 남아 있다");
             Assert.AreEqual(4, wheelAnimator.WheelCount, "실제 바퀴 리그가 정확히 네 개가 아니다");
 
             int totalTriangles = 0;
@@ -293,7 +305,7 @@ namespace CargoStack.Tests
             string[] physicsParts =
             {
                 "GroundSupport", "Chassis", "Cab", "BedFloor", "BedWall_Left",
-                "BedWall_Right", "BedWall_Rear", "BedWall_Front",
+                "BedWall_Right", "BedWall_Front",
             };
             foreach (string partName in physicsParts)
             {
@@ -303,6 +315,10 @@ namespace CargoStack.Tests
                 Assert.IsNull(part.GetComponent<Renderer>(), $"보이지 않는 물리 프록시가 렌더링된다: {partName}");
             }
 
+            Transform rearWall = tailgate.transform.Find("BedWall_Rear");
+            Assert.NotNull(rearWall, "테일게이트 아래에 후면 충돌벽이 없다");
+            Assert.NotNull(rearWall.GetComponent<BoxCollider>(), "후면 충돌벽에 BoxCollider가 없다");
+            Assert.IsNull(rearWall.GetComponent<Renderer>(), "후면 충돌 프록시가 렌더링된다");
             yield break;
         }
 
@@ -325,9 +341,11 @@ namespace CargoStack.Tests
                 "BedWall_Right",
                 new Vector3(BedCenterX, BedFloorTop + BedWallHeight * 0.5f, BedMaxZ + BedWallThickness * 0.5f),
                 new Vector3(BedInsideLength + BedWallThickness * 2f, BedWallHeight, BedWallThickness));
+            AssertVector3(tailgate.transform.localPosition, TailgatePivotPosition, "TailgatePivot");
+            AssertVector3(tailgate.transform.localScale, Vector3.one, "TailgatePivot 크기");
             AssertBedPartMatches(
-                "BedWall_Rear",
-                new Vector3(BedMinX - BedWallThickness * 0.5f, BedFloorTop + BedWallHeight * 0.5f, 0f),
+                "TailgatePivot/BedWall_Rear",
+                new Vector3(0f, BedWallHeight * 0.5f, 0f),
                 new Vector3(BedWallThickness, BedWallHeight, BedInsideWidth));
             AssertBedPartMatches(
                 "BedWall_Front",
@@ -348,13 +366,73 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 테일게이트는_빈손으로_열고_닫을_수_있다()
+        {
+            Assert.IsTrue(tailgate.IsClosed, "씬 시작 시 테일게이트가 닫혀 있지 않다");
+            Assert.IsFalse(tailgate.IsLockedForDriving, "적재 단계인데 테일게이트가 잠겨 있다");
+
+            player.SetWorldPose(
+                tailgate.transform.position - truck.transform.right,
+                truck.transform.rotation,
+                Vector3.zero);
+            Assert.IsTrue(tailgateInteractor.TryToggle(tailgate), "빈손으로 테일게이트를 열지 못했다");
+
+            yield return WaitForTailgate(open: true);
+
+            Assert.IsTrue(tailgate.IsOpen, "테일게이트 열림 애니메이션이 끝나지 않았다");
+            Assert.That(
+                Mathf.DeltaAngle(tailgate.transform.localEulerAngles.z, 90f),
+                Is.EqualTo(0f).Within(0.5f),
+                "테일게이트가 바깥쪽 수평까지 열리지 않았다");
+
+            BoxCollider rearWall = tailgate.transform.Find("BedWall_Rear").GetComponent<BoxCollider>();
+            Assert.That(rearWall.bounds.size.x, Is.GreaterThan(0.6f),
+                "열린 뒷문의 충돌체가 시각물과 함께 눕지 않았다");
+            Assert.That(rearWall.bounds.size.y, Is.LessThan(0.2f),
+                "열린 뒷문의 충돌체가 여전히 세워져 있다");
+
+            Assert.IsTrue(tailgateInteractor.TryToggle(tailgate), "열린 테일게이트를 다시 닫지 못했다");
+            yield return WaitForTailgate(open: false);
+            Assert.IsTrue(tailgate.IsClosed, "테일게이트 닫힘 애니메이션이 끝나지 않았다");
+        }
+
+        [UnityTest]
+        public IEnumerator 출발하면_열린_테일게이트를_닫은_뒤_주행한다()
+        {
+            tailgate.SetOpenInstantly(true);
+            Assert.IsTrue(tailgate.IsOpen, "출발 전 테일게이트 열림 준비에 실패했다");
+
+            flow.StartDriving();
+
+            Assert.AreEqual(GameState.Loading, flow.State,
+                "테일게이트가 열린 채로 주행을 시작했다");
+            yield return WaitForTailgate(open: false);
+            yield return null;
+
+            Assert.AreEqual(GameState.Driving, flow.State,
+                "테일게이트를 닫은 뒤 주행 상태로 넘어가지 않았다");
+            Assert.IsTrue(tailgate.IsClosed, "주행 시작 시 테일게이트가 닫혀 있지 않다");
+            Assert.IsTrue(tailgate.IsLockedForDriving, "주행 중 테일게이트가 다시 열릴 수 있다");
+        }
+
+        [UnityTest]
         public IEnumerator 블루트럭_원본_바퀴는_차체에서_빠져_네_리그에_한번씩만_배정된다()
         {
             Transform visual = truck.transform.Find("BlueTruckVisual");
             MeshFilter bodyFilter = visual.Find("BlueTruckBody").GetComponent<MeshFilter>();
             Mesh bodyMesh = bodyFilter.sharedMesh;
+            Mesh tailgateMesh =
+                tailgate.transform.Find("BlueTruckTailgate").GetComponent<MeshFilter>().sharedMesh;
             Assert.That(bodyMesh.triangles.Length / 3, Is.GreaterThan(400000),
                 "차체 메시가 원본 삼각형 대부분을 보존하지 못했다");
+            Assert.That(tailgateMesh.triangles.Length / 3, Is.GreaterThan(0),
+                "원본 차체에서 테일게이트 메시를 분리하지 못했다");
+            Assert.That(tailgateMesh.bounds.size.x, Is.LessThan(0.3f),
+                "테일게이트에 후면 판넬보다 깊은 차체 조각이 포함됐다");
+            Assert.That(tailgateMesh.bounds.size.y, Is.InRange(0.5f, 0.9f),
+                "테일게이트 높이가 계측 영역과 다르다");
+            Assert.That(tailgateMesh.bounds.size.z, Is.GreaterThan(1.8f),
+                "테일게이트 폭 대부분이 메시로 분리되지 않았다");
 
             var wheelPivots = new Vector3[wheelAnimator.WheelCount];
             for (int index = 0; index < wheelPivots.Length; index++)
@@ -402,8 +480,10 @@ namespace CargoStack.Tests
 
             Assert.AreEqual(
                 BlueTruckV2TriangleCount,
-                bodyMesh.triangles.Length / 3 + wheelTriangles,
-                "원본 삼각형이 차체/네 바퀴 사이에서 누락되거나 중복됐다");
+                bodyMesh.triangles.Length / 3
+                    + tailgateMesh.triangles.Length / 3
+                    + wheelTriangles,
+                "원본 삼각형이 차체/테일게이트/네 바퀴 사이에서 누락되거나 중복됐다");
             yield break;
         }
 
@@ -1186,6 +1266,19 @@ namespace CargoStack.Tests
             {
                 yield return new WaitForFixedUpdate();
             }
+        }
+
+        private IEnumerator WaitForTailgate(bool open)
+        {
+            float remaining = 2f;
+            while ((open ? !tailgate.IsOpen : !tailgate.IsClosed) && remaining > 0f)
+            {
+                remaining -= Time.unscaledDeltaTime;
+                yield return null;
+            }
+
+            Assert.Greater(remaining, 0f,
+                open ? "테일게이트 열림 시간 초과" : "테일게이트 닫힘 시간 초과");
         }
 
         private IEnumerator WaitForResult()

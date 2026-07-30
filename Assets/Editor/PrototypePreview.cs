@@ -27,6 +27,7 @@ namespace CargoStack.EditorTools
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person.png");
             CaptureDiorama("final-blue-truck-v2-empty", 35f, 28f, 13f);
             CaptureWheelStates();
+            CaptureOpenTailgate();
 
             LoadRepresentativeCargoOntoBed();
             CaptureCamera("First Person Camera", $"{OutputFolder}/first-person-loaded.png");
@@ -45,6 +46,21 @@ namespace CargoStack.EditorTools
             CaptureRouteFraming("route-profile", 4f, 0f);
 
             Debug.Log($"[CargoStack] 프리뷰 저장 완료: {OutputFolder}");
+        }
+
+        private static void CaptureOpenTailgate()
+        {
+            TruckTailgate tailgate = Object.FindFirstObjectByType<TruckTailgate>();
+            if (tailgate == null)
+            {
+                Debug.LogError("[CargoStack] 캡처할 테일게이트를 찾지 못했다");
+                return;
+            }
+
+            tailgate.SetOpenInstantly(true);
+            CaptureDiorama("tailgate-open-quarter", 35f, 18f, 10f);
+            CaptureDiorama("tailgate-open-rear", 90f, 12f, 10f);
+            tailgate.SetOpenInstantly(false);
         }
 
         private static void CaptureWheelStates()
