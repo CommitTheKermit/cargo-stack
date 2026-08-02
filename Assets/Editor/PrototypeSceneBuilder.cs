@@ -31,6 +31,10 @@ namespace CargoStack.EditorTools
         private const string StageFolder = "Assets/Stages";
         private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
         private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
+        private const string FontFolder = "Assets/Fonts";
+        private const string TitleFontPath = FontFolder + "/Pretendard-Light.ttf";
+        private const string BodyFontPath = FontFolder + "/Pretendard-Regular.ttf";
+        private const string MenuBackgroundVideoPath = "Assets/Video/MenuBackground.mp4";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
         // v2 Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤
@@ -153,12 +157,16 @@ namespace CargoStack.EditorTools
             };
             Camera camera = cameraObject.AddComponent<Camera>();
             camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = new Color(0.07f, 0.10f, 0.14f);
+            camera.backgroundColor = Color.black;
             cameraObject.AddComponent<AudioListener>();
+            AttachMenuBackgroundVideo(camera);
 
             var menuObject = new GameObject("MainMenu");
-            menuObject.AddComponent<MainMenuController>()
-                .Configure(visibleStages.ToArray());
+            var controller = menuObject.AddComponent<MainMenuController>();
+            controller.Configure(visibleStages.ToArray());
+            controller.SetFonts(
+                AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath),
+                AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath));
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
             EnsureSceneInBuildSettings(MainMenuScenePath, true);
@@ -167,6 +175,34 @@ namespace CargoStack.EditorTools
             Debug.Log(
                 $"[CargoStack] 메인 메뉴 생성 완료: {MainMenuScenePath} "
                 + $"(표시 스테이지 {visibleStages.Count}개)");
+        }
+
+        /// <summary>
+        /// 메인 메뉴 배경으로 게임플레이 녹화 영상을 카메라 근평면에 재생한다.
+        /// 영상 위에는 MainMenuController 가 검은 필터와 글자를 얹는다(IMGUI 는 카메라 위에 그려진다).
+        /// 아직 녹화 영상이 없으면 검은 배경으로 둔다. 영상은 CargoStack/메뉴 배경 영상 녹화 로 만든다.
+        /// </summary>
+        private static void AttachMenuBackgroundVideo(Camera camera)
+        {
+            var clip = AssetDatabase.LoadAssetAtPath<UnityEngine.Video.VideoClip>(
+                MenuBackgroundVideoPath);
+            if (clip == null)
+            {
+                Debug.LogWarning(
+                    "[CargoStack] 메뉴 배경 영상을 찾지 못해 검은 배경으로 둔다: "
+                    + MenuBackgroundVideoPath);
+                return;
+            }
+
+            var player = camera.gameObject.AddComponent<UnityEngine.Video.VideoPlayer>();
+            player.playOnAwake = true;
+            player.isLooping = true;
+            player.waitForFirstFrame = true;
+            player.renderMode = UnityEngine.Video.VideoRenderMode.CameraNearPlane;
+            player.targetCamera = camera;
+            player.clip = clip;
+            player.aspectRatio = UnityEngine.Video.VideoAspectRatio.FitOutside;
+            player.audioOutputMode = UnityEngine.Video.VideoAudioOutputMode.None;
         }
 
         /// <summary>
