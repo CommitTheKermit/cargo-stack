@@ -62,6 +62,17 @@ namespace CargoStack.EditorTools
         private const float RoadWidth = 13f;
         private const float RoadThickness = 1.2f;
 
+        /// <summary>도로 양옆에 까는 잔디 지면의 절반 폭. 나무·바위가 이 위에 선다.</summary>
+        private const float GroundHalfWidth = 38f;
+        private const float GroundThickness = 2f;
+
+        /// <summary>
+        /// 지면을 도로 윗면보다 이만큼만 살짝 낮춘다. 도로/지면 표면이 겹쳐 z-파이팅 나는 것은 막되,
+        /// 플레이어 캡슐(반지름 0.4m)이 걸리지 않고 매끄럽게 넘어갈 만큼 낮은 턱이다.
+        /// 도로와 땅의 구분은 높이가 아니라 재질 색(아스팔트/잔디)이 맡는다.
+        /// </summary>
+        private const float GroundDropBelowRoad = 0.05f;
+
         /// <summary>도로 조각을 이웃과 겹치게 늘리는 배율. 커브 바깥쪽이 벌어지는 것을 막는다.</summary>
         private const float RoadBlockOverlap = 1.5f;
 
@@ -186,7 +197,9 @@ namespace CargoStack.EditorTools
 
             int groundLayer = EnsureLayer("Ground");
 
-            Material groundMaterial = EnsureColorMaterial("Ground", new Color(0.45f, 0.62f, 0.36f));
+            // 도로는 아스팔트 회색, 지면은 잔디 초록으로 나눠 길과 땅을 구분한다.
+            Material roadMaterial = EnsureColorMaterial("Road", new Color(0.30f, 0.30f, 0.33f));
+            Material grassMaterial = EnsureColorMaterial("Grass", new Color(0.42f, 0.60f, 0.33f));
             Material truckMaterial = EnsureColorMaterial("Truck", new Color(0.26f, 0.48f, 0.62f));
             Material bedMaterial = EnsureColorMaterial("Bed", new Color(0.47f, 0.5f, 0.52f));
             Material playerMaterial = EnsureColorMaterial("Player", new Color(0.32f, 0.7f, 0.42f));
@@ -206,9 +219,21 @@ namespace CargoStack.EditorTools
 
             RoutePath route = BuildRoute(
                 groundLayer,
-                groundMaterial,
+                roadMaterial,
                 definition.CopyRouteControlPoints(),
                 definition.SceneName);
+
+            // 도로 아래에 경로 고저를 따라가는 넓은 잔디 지면을 깐다. 나무·바위가 이 위에 선다.
+            BuildGround(route, grassMaterial, groundLayer, definition.SceneName);
+
+            // 도로 양옆 잔디 위에 나무·바위를 흩뿌린다. 모델이 아직 없으면 조용히 건너뛴다.
+            EnvironmentScatter.Scatter(
+                route,
+                definition.SceneName,
+                RoadWidth * 0.5f,
+                definition.TruckStartDistance,
+                GroundDropBelowRoad);
+
             float goalDistance = route.TotalLength - definition.GoalOffsetFromEnd;
             if (goalDistance <= definition.TruckStartDistance)
             {
@@ -447,6 +472,99 @@ namespace CargoStack.EditorTools
             }
 
             // 이미 있는 에셋을 덮어써야 씬이 참조하던 메시가 그대로 갱신된다.
+            existing.Clear();
+            existing.SetVertices(vertices);
+            existing.SetTriangles(triangles, 0);
+            existing.RecalculateNormals();
+            existing.RecalculateBounds();
+            EditorUtility.SetDirty(existing);
+            return existing;
+        }
+
+        /// <summary>
+        /// 도로 아래에 경로를 따라가는 넓은 잔디 지면을 깐다. 도로와 같은 중심선을 쓰되 훨씬 넓고,
+        /// 도로 윗면보다 <see cref="GroundDropBelowRoad"/> 만큼 낮아 길이 땅 위로 도드라진다.
+        /// 나무·바위가 이 위에 서므로 더 이상 공중에 뜨지 않는다.
+        /// </summary>
+        private static void BuildGround(
+            RoutePath route,
+            Material material,
+            int groundLayer,
+            string sceneName)
+        {
+            var ground = new GameObject("Ground");
+            var surface = new GameObject("GroundSurface") { layer = groundLayer };
+            surface.transform.SetParent(ground.transform, false);
+            Mesh mesh = EnsureGroundMesh(route, sceneName);
+            surface.AddComponent<MeshFilter>().sharedMesh = mesh;
+            surface.AddComponent<MeshRenderer>().sharedMaterial = material;
+            // 콜라이더가 없으면 도로 밖으로 나갔을 때 발밑이 비어 아래로 떨어진다.
+            // 지면을 도로와 같은 Ground 레이어에 두어 플레이어가 그 위를 걸을 수 있게 한다.
+            surface.AddComponent<MeshCollider>().sharedMesh = mesh;
+        }
+
+        /// <summary>
+        /// 잔디 지면 리본 메시. 도로 리본과 같은 방식으로 중심선을 따라 좌우로 넓게 편다.
+        /// 옆에서 봐도 두께가 보이도록 치맛단을 아래로 내려 붙인다.
+        /// </summary>
+        private static Mesh EnsureGroundMesh(RoutePath route, string sceneName)
+        {
+            int count = route.SampleCount;
+            var vertices = new Vector3[count * 4];
+
+            for (int i = 0; i < count; i++)
+            {
+                Vector3 point = route.SampleAt(i);
+                Vector3 heading = route.SampleAt(Mathf.Min(i + 1, count - 1))
+                    - route.SampleAt(Mathf.Max(i - 1, 0));
+                heading.y = 0f;
+
+                Vector3 side = Vector3.Cross(Vector3.up, heading.normalized) * GroundHalfWidth;
+                Vector3 top = point + Vector3.down * GroundDropBelowRoad;
+                Vector3 skirt = Vector3.down * GroundThickness;
+
+                vertices[i * 4 + 0] = top - side;
+                vertices[i * 4 + 1] = top + side;
+                vertices[i * 4 + 2] = top - side + skirt;
+                vertices[i * 4 + 3] = top + side + skirt;
+            }
+
+            var triangles = new List<int>((count - 1) * 18);
+            for (int i = 0; i < count - 1; i++)
+            {
+                int a = i * 4;
+                int b = (i + 1) * 4;
+
+                // 윗면
+                triangles.Add(a + 0); triangles.Add(b + 0); triangles.Add(a + 1);
+                triangles.Add(b + 0); triangles.Add(b + 1); triangles.Add(a + 1);
+
+                // 왼쪽 치맛단
+                triangles.Add(a + 0); triangles.Add(a + 2); triangles.Add(b + 0);
+                triangles.Add(a + 2); triangles.Add(b + 2); triangles.Add(b + 0);
+
+                // 오른쪽 치맛단
+                triangles.Add(a + 1); triangles.Add(b + 1); triangles.Add(a + 3);
+                triangles.Add(b + 1); triangles.Add(b + 3); triangles.Add(a + 3);
+            }
+
+            var mesh = new Mesh { name = $"{sceneName}_Ground" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            Directory.CreateDirectory(MeshFolder);
+            AssetDatabase.Refresh();
+
+            string path = $"{MeshFolder}/{sceneName}_Ground.asset";
+            var existing = AssetDatabase.LoadAssetAtPath<Mesh>(path);
+            if (existing == null)
+            {
+                AssetDatabase.CreateAsset(mesh, path);
+                return mesh;
+            }
+
             existing.Clear();
             existing.SetVertices(vertices);
             existing.SetTriangles(triangles, 0);
