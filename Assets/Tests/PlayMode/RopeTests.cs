@@ -83,7 +83,7 @@ namespace CargoStack.Tests
         [UnityTest]
         public IEnumerator 짐칸을_가로지르는_로프는_짐_윗면_위로_지난다()
         {
-            Cargo cargo = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID)[0];
+            Cargo cargo = TallestCargo();
             BoxCollider proxy = cargo.GetComponent<BoxCollider>();
             PlaceOnBedCenter(cargo);
             yield return Settle(40);
@@ -297,6 +297,38 @@ namespace CargoStack.Tests
 
             Assert.That(tracker.RemainingCount, Is.GreaterThanOrEqualTo(3),
                 "로프를 걸었더니 짐이 오히려 쏟아졌다");
+        }
+
+        /// <summary>
+        /// 짐칸에서 가장 높은 짐을 고른다.
+        ///
+        /// 순서로 집으면(index 0) 안 된다. 씬은 재생성물이라 다시 만들 때마다 화물이 놓이는
+        /// 순서가 바뀌고, 그때 <b>짐칸 벽(0.70m)보다 낮은 상자</b>가 걸리면 이 시험이 성립하지
+        /// 않는다. 벽보다 낮은 짐 위로는 로프가 벽에서 벽으로 곧장 지나는 것이 맞기 때문이다.
+        /// 실제로 그렇게 걸려 한 번 깨졌다(높이 0.66m 상자가 1번으로 왔다).
+        /// </summary>
+        private static Cargo TallestCargo()
+        {
+            Cargo[] all = Object.FindObjectsByType<Cargo>(FindObjectsSortMode.InstanceID);
+
+            Cargo tallest = null;
+            float tallestHeight = float.NegativeInfinity;
+            foreach (Cargo candidate in all)
+            {
+                var proxy = candidate.GetComponent<BoxCollider>();
+                if (proxy == null || proxy.size.y <= tallestHeight)
+                {
+                    continue;
+                }
+
+                tallest = candidate;
+                tallestHeight = proxy.size.y;
+            }
+
+            Assert.NotNull(tallest, "짐칸에 상자 프록시를 가진 짐이 하나도 없다");
+            Assert.That(tallestHeight, Is.GreaterThan(BedWallHeight),
+                "가장 높은 짐조차 짐칸 벽보다 낮다. 이 배치로는 로프가 넘어갈 봉우리가 없다");
+            return tallest;
         }
 
         /// <summary>짐칸 좌우 벽 윗면 한 점. 짐을 가로질러 누르는 로프를 묶는 자리다.</summary>
