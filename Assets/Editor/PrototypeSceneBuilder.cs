@@ -264,6 +264,7 @@ namespace CargoStack.EditorTools
             var tracker = systems.AddComponent<CargoTracker>();
             var director = systems.AddComponent<CameraDirector>();
             var hud = systems.AddComponent<PrototypeHud>();
+            var resultScreen = systems.AddComponent<ResultScreen>();
 
             using (var wiring = new Wiring(director))
             {
@@ -294,6 +295,8 @@ namespace CargoStack.EditorTools
                     .Ref("cargoMaterial", cargoPhysics)
                     .Ref("ropeInteractor", player.GetComponent<PlayerRopeInteractor>());
             }
+
+            resultScreen.Configure(flow, tracker);
 
             EditorSceneManager.SaveScene(scene, scenePath);
             EnsureSceneInBuildSettings(scenePath);
