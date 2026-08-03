@@ -1062,6 +1062,54 @@ namespace CargoStack.Tests
             Assert.AreEqual(0, tracker.RemainingCount);
         }
 
+        [UnityTest]
+        public IEnumerator 너무_강한_충격을_받은_흉상은_부서져_손실로_집계된다()
+        {
+            Cargo bust = FindCargoWithVisual("MarbleBust");
+            CargoBreakable breakable = bust.GetComponent<CargoBreakable>();
+            Assert.NotNull(breakable, "흉상에 파손 컴포넌트가 배선되지 않았다");
+
+            foreach (Cargo cargo in GetCargo())
+            {
+                if (cargo != bust)
+                {
+                    cargo.gameObject.SetActive(false);
+                }
+            }
+
+            BoxCollider proxy = bust.GetComponent<BoxCollider>();
+            Rigidbody body = bust.Body;
+            body.position = truck.transform.TransformPoint(new Vector3(
+                BedCenterX,
+                BedFloorTop + proxy.size.y * 0.5f + 0.04f,
+                BedMinZ + proxy.size.z * 0.5f + 0.40f));
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            bust.transform.SetPositionAndRotation(body.position, body.rotation);
+            Physics.SyncTransforms();
+
+            yield return Settle(10);
+
+            // 측면 벽을 향해 세게 던진다. 기본 파손 속도(8m/s)보다 확실히 위인 값이다.
+            body.linearVelocity = truck.transform.forward * 12f;
+
+            for (int fixedStep = 0; fixedStep < 60 && !bust.IsBroken; fixedStep++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            Assert.IsTrue(bust.IsBroken, "강한 충격을 받고도 흉상이 부서지지 않았다");
+            Renderer visual = FindImportedVisual(bust).GetComponentInChildren<Renderer>();
+            Assert.IsFalse(visual.enabled, "부서진 흉상의 모델이 여전히 보인다");
+
+            Time.timeScale = 3f;
+            flow.StartDriving();
+            yield return WaitForResult();
+
+            Assert.AreEqual(0, tracker.RemainingCount, "부서진 흉상이 별점 손실로 집계되지 않았다");
+        }
+
         /// <summary>작아진 픽업 짐칸에 네 개를 바닥, 두 개를 위층으로 안정되게 쌓는다.</summary>
         private void PlaceCargoInSingleLayer()
         {

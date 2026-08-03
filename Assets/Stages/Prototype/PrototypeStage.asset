@@ -112,6 +112,7 @@ MonoBehaviour:
   - assetName: MarbleBust
     maximumSize: {x: 0.8, y: 1.05, z: 0.8}
     mass: 28
+    isFragile: 1
   - assetName: FloorLamp
     maximumSize: {x: 0.7, y: 1.15, z: 0.7}
     mass: 16

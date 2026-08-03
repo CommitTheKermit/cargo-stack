@@ -759,6 +759,11 @@ namespace CargoStack.EditorTools
                 cargo.Add(item.AddComponent<Cargo>());
                 item.AddComponent<AudioSource>();
                 item.AddComponent<CargoImpactAudio>().Configure(impactClips);
+
+                if (definition.IsFragile)
+                {
+                    item.AddComponent<CargoBreakable>().Configure(definition.BreakImpactSpeed);
+                }
             }
 
             return cargo;

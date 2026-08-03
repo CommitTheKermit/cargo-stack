@@ -88,6 +88,11 @@ namespace CargoStack
 
         private bool IsOnBoard(Cargo cargo)
         {
+            if (cargo.IsBroken)
+            {
+                return false;
+            }
+
             Vector3 local = bedAnchor.InverseTransformPoint(cargo.transform.position);
 
             return local.x >= keepMin.x && local.x <= keepMax.x

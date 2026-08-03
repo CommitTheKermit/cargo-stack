@@ -27,5 +27,13 @@ namespace CargoStack
                 return body;
             }
         }
+
+        /// <summary>부서졌는지. CargoTracker 는 부서진 짐을 항상 짐칸 밖으로 본다.</summary>
+        public bool IsBroken { get; private set; }
+
+        public void MarkBroken()
+        {
+            IsBroken = true;
+        }
     }
 }
