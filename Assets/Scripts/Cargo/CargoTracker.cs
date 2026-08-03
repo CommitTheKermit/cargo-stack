@@ -31,6 +31,29 @@ namespace CargoStack
         public int DroppedCount => dropped.Count;
         public int RemainingCount => tracked.Count - dropped.Count;
 
+        /// <summary>모두 옮기면 3개, 하나라도 잃으면 2개, 반 이상 잃으면 1개, 전부 잃으면 0개.</summary>
+        public int StarRating => CalculateStars(TotalCount, DroppedCount);
+
+        public static int CalculateStars(int total, int dropped)
+        {
+            if (dropped == 0)
+            {
+                return 3;
+            }
+
+            if (total > 0 && dropped >= total)
+            {
+                return 0;
+            }
+
+            if (dropped * 2 >= total)
+            {
+                return 1;
+            }
+
+            return 2;
+        }
+
         /// <summary>짐 하나가 짐칸을 벗어났다. 기획서 5장의 팀 인터페이스 이벤트.</summary>
         public event Action<Cargo> CargoDropped;
 

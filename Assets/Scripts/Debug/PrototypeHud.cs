@@ -108,7 +108,7 @@ namespace CargoStack
             {
                 GameState.Loading => "적재 (짐을 쌓고 Enter)",
                 GameState.Driving => "주행 중",
-                GameState.Result => tracker.DroppedCount == 0 ? "도착 - 완주!" : $"도착 - {tracker.DroppedCount}개 분실",
+                GameState.Result => $"도착 - 별 {tracker.StarRating}/3 ({tracker.DroppedCount}개 분실)",
                 _ => flow.State.ToString(),
             };
         }
