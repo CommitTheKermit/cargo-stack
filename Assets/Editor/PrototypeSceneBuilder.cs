@@ -952,23 +952,27 @@ namespace CargoStack.EditorTools
             // 시점 yaw 는 FirstPersonCamera 의 마우스 입력만으로 정해져야 한다.
             body.constraints = RigidbodyConstraints.FreezeRotation;
 
+            // 키를 20% 키운다(사용자 요청). 굵기(radius)는 그대로 둔다 - 사거리 실측표(README)가
+            // 트럭 옆 선 자리에서 수평거리로 잰 값이라 반지름을 건드리면 그 실측이 무효가 된다.
+            const float HeightScale = 1.2f;
+
             CapsuleCollider capsule = player.AddComponent<CapsuleCollider>();
             capsule.radius = 0.4f;
-            capsule.height = 1.8f;
-            capsule.center = new Vector3(0f, 0.9f, 0f);
+            capsule.height = 1.8f * HeightScale;
+            capsule.center = new Vector3(0f, 0.9f * HeightScale, 0f);
 
             GameObject visual = GameObject.CreatePrimitive(PrimitiveType.Capsule);
             visual.name = "Body";
             visual.transform.SetParent(player.transform, false);
-            visual.transform.localPosition = new Vector3(0f, 0.9f, 0f);
-            visual.transform.localScale = new Vector3(0.75f, 0.9f, 0.75f);
+            visual.transform.localPosition = new Vector3(0f, 0.9f * HeightScale, 0f);
+            visual.transform.localScale = new Vector3(0.75f, 0.9f * HeightScale, 0.75f);
             visual.GetComponent<Renderer>().sharedMaterial = material;
 
             // 1인칭 시야를 자기 몸이 가리지 않게 그림자만 남긴다.
             visual.GetComponent<Renderer>().shadowCastingMode = ShadowCastingMode.ShadowsOnly;
             Object.DestroyImmediate(visual.GetComponent<Collider>());
 
-            Transform eye = CreatePoint("PlayerView", player.transform, new Vector3(0f, 1.6f, 0f));
+            Transform eye = CreatePoint("PlayerView", player.transform, new Vector3(0f, 1.6f * HeightScale, 0f));
 
             PlayerController controller = player.AddComponent<PlayerController>();
             controller.Configure(firstPersonCamera);
