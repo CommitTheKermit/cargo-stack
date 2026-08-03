@@ -127,10 +127,18 @@ namespace CargoStack
         [SerializeField] private StageCargoColliderShape colliderShape =
             StageCargoColliderShape.Box;
 
+        [Tooltip("깨질 수 있는 화물인지. 충격 속도가 breakImpactSpeed 이상이면 부서진다.")]
+        [SerializeField] private bool isFragile;
+
+        [Tooltip("이 속도(m/s) 이상의 충격을 받으면 부서진다. isFragile일 때만 쓰인다.")]
+        [SerializeField] private float breakImpactSpeed = 8f;
+
         public string AssetName => assetName;
         public Vector3 MaximumSize => maximumSize;
         public float Mass => mass;
         public StageCargoColliderShape ColliderShape => colliderShape;
+        public bool IsFragile => isFragile;
+        public float BreakImpactSpeed => breakImpactSpeed;
 
         internal void ValidateOrThrow(string stageName, int index)
         {
@@ -158,6 +166,12 @@ namespace CargoStack
             {
                 throw new InvalidOperationException(
                     $"{stageName}: {index}번 화물의 충돌 형태가 올바르지 않다.");
+            }
+
+            if (isFragile && breakImpactSpeed <= 0f)
+            {
+                throw new InvalidOperationException(
+                    $"{stageName}: {index}번 화물의 파손 충격 속도는 0보다 커야 한다.");
             }
         }
     }
