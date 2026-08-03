@@ -75,14 +75,7 @@ namespace CargoStack
             GUILayout.Label("짐 마찰", labelStyle);
             DrawFrictionSliders(cargoMaterial);
 
-            if (flow.State == GameState.Result)
-            {
-                GUILayout.Space(10f);
-                if (GUILayout.Button("메인 메뉴로 돌아가기", GUILayout.Height(30f)))
-                {
-                    flow.ReturnToMainMenu();
-                }
-            }
+            // 결과 화면의 버튼은 ResultScreen 이 그린다. 여기 또 두면 같은 조작이 두 곳에 생긴다.
 
             GUILayout.EndArea();
         }
