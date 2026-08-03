@@ -26,7 +26,7 @@ namespace CargoStack
 
         [Tooltip("로프가 짐 표면을 물고 들어가는 깊이(m). 이 파묻힘을 물리가 밀어내려는 힘이 "
             + "곧 짐을 누르는 힘이 된다. 0 이면 짐 위에 얹혀만 있어 미끄러짐을 막지 못한다.")]
-        [SerializeField, Range(0f, 0.03f)] private float gripDepth = 0.012f;
+        [SerializeField, Range(0f, 0.03f)] private float gripDepth = 0.02f;
 
         [Tooltip("한 가닥의 최대 길이. 이보다 먼 두 점은 이을 수 없다.")]
         [SerializeField, Min(0.5f)] private float maximumLength = 8f;

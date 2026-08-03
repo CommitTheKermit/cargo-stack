@@ -313,8 +313,13 @@ namespace CargoStack
 
             Rigidbody body = segment.AddComponent<Rigidbody>();
             body.mass = mass;
-            body.linearDamping = 0.6f;
-            body.angularDamping = 0.6f;
+
+            // 주행 중 트럭 앵커가 커브·고저차로 급하게 움직이면 그 힘이 사슬을 타고 채찍처럼
+            // 전달된다(실측: 마디 최고 속도가 트럭의 1.7배). 감쇠를 올려 그 진동이 잦아드는
+            // 속도를 높인다. 다만 이 값 자체가 순간 최고 속도(조인트 보정)를 낮추지는 않았다
+            // (실측 17.0 → 17.8m/s, 오차 범위). gripDepth 와 별개로 남은 문제로 본다.
+            body.linearDamping = 1.6f;
+            body.angularDamping = 1.6f;
             body.interpolation = RigidbodyInterpolation.Interpolate;
 
             // 트럭 위에서 빠르게 움직이는 얇은 물체라, 기본 판정으로는 짐을 뚫고 지나간다.
