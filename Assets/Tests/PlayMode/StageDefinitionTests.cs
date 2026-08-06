@@ -27,10 +27,31 @@ namespace CargoStack.Tests
                 SceneManager.GetActiveScene().name,
                 context.Definition.SceneName);
             Assert.NotNull(route, "경로가 생성되지 않았다");
-            Assert.That(route.TotalLength, Is.GreaterThan(80f));
+            Assert.That(route.TotalLength, Is.GreaterThan(125f));
             Assert.NotNull(truck, "트럭이 생성되지 않았다");
             Assert.AreEqual(context.Definition.CargoCount, cargo.Length);
             Assert.AreEqual(6, cargo.Length, "튜토리얼 화물 구성이 달라졌다");
+
+            int hills = 0;
+            bool wasOnHill = false;
+            float highestPoint = float.NegativeInfinity;
+            for (int index = 0; index < route.SampleCount; index++)
+            {
+                float height = route.SampleAt(index).y;
+                highestPoint = Mathf.Max(highestPoint, height);
+                bool isOnHill = height > 2f;
+                if (isOnHill && !wasOnHill)
+                {
+                    hills++;
+                }
+
+                wasOnHill = isOnHill;
+            }
+
+            Debug.Log(
+                $"[CargoStack] Stage01 경로: 길이 {route.TotalLength:0.0}m, "
+                + $"언덕 {hills}개, 최고점 {highestPoint:0.0}m");
+            Assert.AreEqual(2, hills, "Stage 01 경로에는 분리된 언덕이 두 개여야 한다");
 
             int boxes = 0;
             int capsules = 0;
