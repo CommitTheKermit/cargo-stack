@@ -17,4 +17,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Stage02_SpeedBumps.unity
     guid: 872399e6a8efd404bba93016d61b21ff
+  - enabled: 1
+    path: Assets/Scenes/Stage03_HillsAndPits.unity
+    guid: 51f51944dba1adf4697def2ee88b5a05
   m_configObjects: {}
