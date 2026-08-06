@@ -127,6 +127,9 @@ namespace CargoStack
         [SerializeField] private StageCargoColliderShape colliderShape =
             StageCargoColliderShape.Box;
 
+        [Tooltip("모델 원래 비율을 무시하고 maximumSize에 정확히 맞춘다. 대형 가전 박스처럼 길쭉한 화물에만 사용한다.")]
+        [SerializeField] private bool stretchToMaximumSize;
+
         [Tooltip("깨질 수 있는 화물인지. 충격 속도가 breakImpactSpeed 이상이면 부서진다.")]
         [SerializeField] private bool isFragile;
 
@@ -137,6 +140,7 @@ namespace CargoStack
         public Vector3 MaximumSize => maximumSize;
         public float Mass => mass;
         public StageCargoColliderShape ColliderShape => colliderShape;
+        public bool StretchToMaximumSize => stretchToMaximumSize;
         public bool IsFragile => isFragile;
         public float BreakImpactSpeed => breakImpactSpeed;
 

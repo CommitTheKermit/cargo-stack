@@ -1103,13 +1103,30 @@ namespace CargoStack.EditorTools
             }
 
             Bounds originalBounds = GetRendererBounds(visual);
-            float scale = Mathf.Min(
-                definition.MaximumSize.x / originalBounds.size.x,
-                definition.MaximumSize.y / originalBounds.size.y,
-                definition.MaximumSize.z / originalBounds.size.z);
-            // Meshy FBX roots carry their source-unit conversion in localScale (typically
-            // 100). Preserve it while fitting the visible renderer into the proxy bounds.
-            visual.transform.localScale = importedScale * scale;
+            if (definition.StretchToMaximumSize)
+            {
+                Vector3 worldStretch = new(
+                    definition.MaximumSize.x / originalBounds.size.x,
+                    definition.MaximumSize.y / originalBounds.size.y,
+                    definition.MaximumSize.z / originalBounds.size.z);
+                // FBX의 Z-up을 Y-up으로 세우려고 루트를 X축 -90도로 돌렸으므로,
+                // 월드 Y/Z 배율은 모델 로컬 Z/Y축에 각각 적용해야 한다.
+                Vector3 modelStretch = new(
+                    worldStretch.x,
+                    worldStretch.z,
+                    worldStretch.y);
+                visual.transform.localScale = Vector3.Scale(importedScale, modelStretch);
+            }
+            else
+            {
+                float scale = Mathf.Min(
+                    definition.MaximumSize.x / originalBounds.size.x,
+                    definition.MaximumSize.y / originalBounds.size.y,
+                    definition.MaximumSize.z / originalBounds.size.z);
+                // Meshy FBX roots carry their source-unit conversion in localScale (typically
+                // 100). Preserve it while fitting the visible renderer into the proxy bounds.
+                visual.transform.localScale = importedScale * scale;
+            }
 
             Bounds scaledBounds = GetRendererBounds(visual);
             visual.transform.localPosition = -scaledBounds.center;
