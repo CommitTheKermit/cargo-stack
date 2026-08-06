@@ -16,15 +16,20 @@ MonoBehaviour:
   sceneName: Stage01_Tutorial
   showInMenu: 1
   displayName: Stage 01 · 첫 배송
-  menuDescription: 원통 2개 · 상자 2개 · 조각상과 전등 · 완만한 오르막
+  menuDescription: 원통 2개 · 상자 2개 · 조각상과 전등 · 언덕 2개
   routeControlPoints:
   - {x: 0, y: 0, z: 0}
   - {x: 16, y: 0, z: 0}
   - {x: 28, y: 0, z: 0}
-  - {x: 42, y: 3, z: 0}
-  - {x: 56, y: 6, z: 0}
-  - {x: 72, y: 4, z: 0}
-  - {x: 88, y: 4, z: 0}
+  - {x: 40, y: 3, z: 0}
+  - {x: 52, y: 5.5, z: 0}
+  - {x: 64, y: 1, z: 0}
+  - {x: 72, y: 0, z: 0}
+  - {x: 80, y: 1, z: 0}
+  - {x: 92, y: 4, z: 0}
+  - {x: 104, y: 5.8, z: 0}
+  - {x: 116, y: 1, z: 0}
+  - {x: 128, y: 0, z: 0}
   truckStartDistance: 8
   goalOffsetFromEnd: 6
   maxSpeed: 8
