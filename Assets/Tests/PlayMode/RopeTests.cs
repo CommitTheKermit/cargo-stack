@@ -163,6 +163,28 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 로프는_RopeTool_메시를_시각으로_쓴다()
+        {
+            Rope rope = Rope.Create(WallTop(BedMinZ), WallTop(BedMaxZ), settings, null);
+            Assert.NotNull(rope, "로프를 걸지 못했다");
+
+            MeshFilter meshFilter = rope.GetComponent<MeshFilter>();
+            MeshRenderer meshRenderer = rope.GetComponent<MeshRenderer>();
+
+            Assert.NotNull(meshFilter, "Rope Tool 시각 메시가 없다");
+            Assert.NotNull(meshFilter.sharedMesh, "Rope Tool 시각 메시가 비어 있다");
+            Assert.That(meshFilter.sharedMesh.vertexCount, Is.GreaterThan(0),
+                "Rope Tool 시각 메시 정점이 없다");
+            Assert.NotNull(meshRenderer, "Rope Tool 시각 렌더러가 없다");
+            Assert.NotNull(meshRenderer.sharedMaterial, "Rope Tool 시각 머티리얼이 없다");
+            Assert.IsNull(rope.GetComponent<LineRenderer>(),
+                "기존 LineRenderer가 Rope Tool 메시와 함께 남아 있다");
+
+            rope.Remove();
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator 너무_먼_두_점은_한_가닥으로_잇지_못한다()
         {
             RopeAttachment near = RopeAttachment.At(truckBody, truck.transform.TransformPoint(Vector3.zero));
