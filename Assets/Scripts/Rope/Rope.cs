@@ -38,18 +38,28 @@ namespace CargoStack
         private PhysicsMaterial surfaceMaterial;
         private float visualRadius;
 
-        // HE_Rope_Tool.hda defaults to an eight-row swept cross-section and twists
-        // it by 500 degrees per unit. The runtime still needs to follow the
-        // physical chain, so the same profile is swept over the interpolated
-        // knots instead of relying on a Houdini Engine session in the player.
-        private const int VisualCrossSectionRows = 16;
-        private const int VisualLobeCount = 3;
+        // HE_Rope_Tool.hda's "Rope" style rolls a small circular profile around
+        // the input curve. The runtime player cannot cook the HDA without
+        // Houdini Engine, so the visual fallback below uses three circular
+        // strands braided around that same curve. The 0.05 m curve resolution
+        // is important: rolling a sparse physics chain by 500 degrees per metre
+        // creates the same pinched, ribbon-like triangles that the asset avoids
+        // by resampling its input curve first.
+        private const int VisualCrossSectionRows = 8;
+        private const int VisualStrandCount = 3;
+        private const float VisualStrandOrbitRatio = 0.52f;
+        private const float VisualStrandRadiusRatio = 0.46f;
+        private const float VisualSampleSpacing = 0.05f;
+        private const int MaximumVisualPointCount = 512;
         private const float VisualTwistDegreesPerUnit = 500f;
-        private const float VisualLobeDepth = 0.12f;
 
+        private Vector3[] visualControlPoints;
+        private float[] visualControlDistances;
+        private Vector3[] visualPathPoints;
         private Vector3[] visualVertices;
         private Vector2[] visualUvs;
         private int[] visualTriangles;
+        private int visualControlPointCount;
         private int visualPointCount;
 
         public int SegmentCount => segments.Count;
@@ -438,9 +448,18 @@ namespace CargoStack
         private void CreateRopeToolVisual(RopeSettings settings)
         {
             visualRadius = settings.Radius;
-            visualPointCount = segments.Count + 1;
-            int ringVertexCount = visualPointCount * VisualCrossSectionRows;
-            visualVertices = new Vector3[ringVertexCount + 2];
+            visualControlPointCount = segments.Count + 2;
+            visualControlPoints = new Vector3[visualControlPointCount];
+            visualControlDistances = new float[visualControlPointCount];
+            float initialPathLength = RefreshVisualControlPoints();
+            visualPointCount = Mathf.Clamp(
+                Mathf.CeilToInt(initialPathLength / VisualSampleSpacing) + 1,
+                2,
+                MaximumVisualPointCount);
+            visualPathPoints = new Vector3[visualPointCount];
+
+            int ringVertexCount = visualPointCount * VisualCrossSectionRows * VisualStrandCount;
+            visualVertices = new Vector3[ringVertexCount + VisualStrandCount * 2];
             visualUvs = new Vector2[visualVertices.Length];
             visualTriangles = BuildVisualTriangles(visualPointCount);
 
@@ -449,17 +468,23 @@ namespace CargoStack
                 float u = visualPointCount <= 1
                     ? 0f
                     : pointIndex / (float)(visualPointCount - 1);
-                for (int row = 0; row < VisualCrossSectionRows; row++)
+                for (int strand = 0; strand < VisualStrandCount; strand++)
                 {
-                    int vertexIndex = pointIndex * VisualCrossSectionRows + row;
-                    visualUvs[vertexIndex] = new Vector2(
-                        u,
-                        row / (float)VisualCrossSectionRows);
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        int vertexIndex = GetVisualVertexIndex(pointIndex, strand, row);
+                        visualUvs[vertexIndex] = new Vector2(
+                            u,
+                            row / (float)VisualCrossSectionRows);
+                    }
                 }
             }
 
-            visualUvs[ringVertexCount] = new Vector2(0f, 0.5f);
-            visualUvs[ringVertexCount + 1] = new Vector2(1f, 0.5f);
+            for (int strand = 0; strand < VisualStrandCount; strand++)
+            {
+                visualUvs[GetVisualStartCapIndex(visualPointCount, strand)] = new Vector2(0f, 0.5f);
+                visualUvs[GetVisualEndCapIndex(visualPointCount, strand)] = new Vector2(1f, 0.5f);
+            }
 
             visualMeshFilter = gameObject.AddComponent<MeshFilter>();
             visualRenderer = gameObject.AddComponent<MeshRenderer>();
@@ -522,55 +547,72 @@ namespace CargoStack
 
         private int[] BuildVisualTriangles(int pointCount)
         {
-            int ringVertexCount = pointCount * VisualCrossSectionRows;
-            int quadTriangleCount = (pointCount - 1) * VisualCrossSectionRows * 2;
-            int capTriangleCount = VisualCrossSectionRows * 2;
+            int quadTriangleCount = (pointCount - 1) * VisualCrossSectionRows * VisualStrandCount * 2;
+            int capTriangleCount = VisualCrossSectionRows * VisualStrandCount * 2;
             var triangles = new int[(quadTriangleCount + capTriangleCount) * 3];
             int writeIndex = 0;
 
-            for (int pointIndex = 0; pointIndex < pointCount - 1; pointIndex++)
+            for (int strand = 0; strand < VisualStrandCount; strand++)
             {
-                int currentRing = pointIndex * VisualCrossSectionRows;
-                int nextRing = (pointIndex + 1) * VisualCrossSectionRows;
+                for (int pointIndex = 0; pointIndex < pointCount - 1; pointIndex++)
+                {
+                    int currentRing = GetVisualVertexIndex(pointIndex, strand, 0);
+                    int nextRing = GetVisualVertexIndex(pointIndex + 1, strand, 0);
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        int nextRow = (row + 1) % VisualCrossSectionRows;
+                        AddTriangle(
+                            triangles,
+                            ref writeIndex,
+                            currentRing + row,
+                            nextRing + row,
+                            nextRing + nextRow);
+                        AddTriangle(
+                            triangles,
+                            ref writeIndex,
+                            currentRing + row,
+                            nextRing + nextRow,
+                            currentRing + nextRow);
+                    }
+                }
+
+                int startCap = GetVisualStartCapIndex(pointCount, strand);
+                int endCap = GetVisualEndCapIndex(pointCount, strand);
+                int lastRing = GetVisualVertexIndex(pointCount - 1, strand, 0);
                 for (int row = 0; row < VisualCrossSectionRows; row++)
                 {
                     int nextRow = (row + 1) % VisualCrossSectionRows;
                     AddTriangle(
                         triangles,
                         ref writeIndex,
-                        currentRing + row,
-                        nextRing + row,
-                        nextRing + nextRow);
+                        startCap,
+                        nextRow + GetVisualVertexIndex(0, strand, 0),
+                        row + GetVisualVertexIndex(0, strand, 0));
                     AddTriangle(
                         triangles,
                         ref writeIndex,
-                        currentRing + row,
-                        nextRing + nextRow,
-                        currentRing + nextRow);
+                        endCap,
+                        lastRing + row,
+                        lastRing + nextRow);
                 }
             }
 
-            int startCap = ringVertexCount;
-            int endCap = ringVertexCount + 1;
-            int lastRing = (pointCount - 1) * VisualCrossSectionRows;
-            for (int row = 0; row < VisualCrossSectionRows; row++)
-            {
-                int nextRow = (row + 1) % VisualCrossSectionRows;
-                AddTriangle(
-                    triangles,
-                    ref writeIndex,
-                    startCap,
-                    nextRow,
-                    row);
-                AddTriangle(
-                    triangles,
-                    ref writeIndex,
-                    endCap,
-                    lastRing + row,
-                    lastRing + nextRow);
-            }
-
             return triangles;
+        }
+
+        private static int GetVisualVertexIndex(int pointIndex, int strand, int row)
+        {
+            return ((pointIndex * VisualStrandCount) + strand) * VisualCrossSectionRows + row;
+        }
+
+        private static int GetVisualStartCapIndex(int pointCount, int strand)
+        {
+            return pointCount * VisualStrandCount * VisualCrossSectionRows + strand * 2;
+        }
+
+        private static int GetVisualEndCapIndex(int pointCount, int strand)
+        {
+            return GetVisualStartCapIndex(pointCount, strand) + 1;
         }
 
         private static void AddTriangle(int[] triangles, ref int writeIndex, int first, int second, int third)
@@ -587,17 +629,29 @@ namespace CargoStack
                 return;
             }
 
-            Vector3 previousPoint = start.WorldPoint;
-            Vector3 tangent = GetVisualTangent(0, previousPoint);
+            float totalDistance = RefreshVisualControlPoints();
+            if (totalDistance < Mathf.Epsilon)
+            {
+                return;
+            }
+
+            for (int pointIndex = 0; pointIndex < visualPointCount; pointIndex++)
+            {
+                float ratio = pointIndex / (float)(visualPointCount - 1);
+                visualPathPoints[pointIndex] = SampleVisualPath(totalDistance * ratio);
+            }
+
+            Vector3 previousPoint = visualPathPoints[0];
+            Vector3 tangent = GetVisualTangent(0);
             Vector3 normal = ChooseVisualNormal(tangent);
             float distance = 0f;
 
             for (int pointIndex = 0; pointIndex < visualPointCount; pointIndex++)
             {
-                Vector3 point = GetVisualPoint(pointIndex);
+                Vector3 point = visualPathPoints[pointIndex];
                 if (pointIndex > 0)
                 {
-                    Vector3 nextTangent = GetVisualTangent(pointIndex, point);
+                    Vector3 nextTangent = GetVisualTangent(pointIndex);
                     Quaternion transport = Quaternion.FromToRotation(tangent, nextTangent);
                     normal = transport * normal;
                     normal = Vector3.ProjectOnPlane(normal, nextTangent);
@@ -622,28 +676,86 @@ namespace CargoStack
                 Vector3 binormal = Vector3.Cross(tangent, twistedNormal).normalized;
                 twistedNormal = Vector3.Cross(binormal, tangent).normalized;
 
-                for (int row = 0; row < VisualCrossSectionRows; row++)
+                float strandOrbit = visualRadius * VisualStrandOrbitRatio;
+                float strandRadius = visualRadius * VisualStrandRadiusRatio;
+                for (int strand = 0; strand < VisualStrandCount; strand++)
                 {
-                    float angle = row * Mathf.PI * 2f / VisualCrossSectionRows;
-                    float lobe = 1f + VisualLobeDepth * Mathf.Cos(VisualLobeCount * angle);
-                    Vector3 offset = (twistedNormal * Mathf.Cos(angle) + binormal * Mathf.Sin(angle))
-                        * visualRadius * lobe;
-                    visualVertices[pointIndex * VisualCrossSectionRows + row] = transform.InverseTransformPoint(point + offset);
-                }
+                    float strandAngle = strand * Mathf.PI * 2f / VisualStrandCount;
+                    Vector3 strandDirection =
+                        twistedNormal * Mathf.Cos(strandAngle) + binormal * Mathf.Sin(strandAngle);
+                    Vector3 strandBinormal = Vector3.Cross(tangent, strandDirection).normalized;
+                    Vector3 strandCenter = point + strandDirection * strandOrbit;
 
-                if (pointIndex == 0)
-                {
-                    visualVertices[visualPointCount * VisualCrossSectionRows] = transform.InverseTransformPoint(point);
-                }
-                else if (pointIndex == visualPointCount - 1)
-                {
-                    visualVertices[visualPointCount * VisualCrossSectionRows + 1] = transform.InverseTransformPoint(point);
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        float angle = row * Mathf.PI * 2f / VisualCrossSectionRows;
+                        Vector3 sectionDirection =
+                            strandDirection * Mathf.Cos(angle) + strandBinormal * Mathf.Sin(angle);
+                        Vector3 offset = strandDirection * strandOrbit + sectionDirection * strandRadius;
+                        int vertexIndex = GetVisualVertexIndex(pointIndex, strand, row);
+                        visualVertices[vertexIndex] = transform.InverseTransformPoint(point + offset);
+                    }
+
+                    if (pointIndex == 0)
+                    {
+                        visualVertices[GetVisualStartCapIndex(visualPointCount, strand)] =
+                            transform.InverseTransformPoint(strandCenter);
+                    }
+                    else if (pointIndex == visualPointCount - 1)
+                    {
+                        visualVertices[GetVisualEndCapIndex(visualPointCount, strand)] =
+                            transform.InverseTransformPoint(strandCenter);
+                    }
                 }
             }
 
             visualMesh.vertices = visualVertices;
             visualMesh.RecalculateNormals();
             visualMesh.RecalculateBounds();
+        }
+
+        private float RefreshVisualControlPoints()
+        {
+            visualControlPoints[0] = start.WorldPoint;
+            for (int index = 0; index < segments.Count; index++)
+            {
+                visualControlPoints[index + 1] = segments[index].transform.position;
+            }
+            visualControlPoints[visualControlPointCount - 1] = end.WorldPoint;
+
+            visualControlDistances[0] = 0f;
+            float totalDistance = 0f;
+            for (int index = 1; index < visualControlPointCount; index++)
+            {
+                totalDistance += Vector3.Distance(
+                    visualControlPoints[index - 1], visualControlPoints[index]);
+                visualControlDistances[index] = totalDistance;
+            }
+
+            return totalDistance;
+        }
+
+        private Vector3 SampleVisualPath(float distance)
+        {
+            distance = Mathf.Clamp(distance, 0f, visualControlDistances[visualControlPointCount - 1]);
+            for (int index = 1; index < visualControlPointCount; index++)
+            {
+                if (visualControlDistances[index] < distance && index < visualControlPointCount - 1)
+                {
+                    continue;
+                }
+
+                float span = visualControlDistances[index] - visualControlDistances[index - 1];
+                float ratio = span < Mathf.Epsilon
+                    ? 0f
+                    : (distance - visualControlDistances[index - 1]) / span;
+                return Vector3.Lerp(
+                    visualControlPoints[index - 1],
+                    visualControlPoints[index],
+                    Mathf.Clamp01(ratio));
+            }
+
+            return visualControlPoints[visualControlPointCount - 1];
         }
 
         private void OnDestroy()
@@ -653,44 +765,33 @@ namespace CargoStack
             DestroyRuntimeAsset(surfaceMaterial);
         }
 
-        private Vector3 GetVisualPoint(int pointIndex)
+        private Vector3 GetVisualTangent(int pointIndex)
         {
+            Vector3 point = visualPathPoints[pointIndex];
             if (pointIndex == 0)
             {
-                return start.WorldPoint;
+                return SafeVisualDirection(visualPathPoints[1] - point);
             }
 
             if (pointIndex == visualPointCount - 1)
             {
-                return end.WorldPoint;
+                return SafeVisualDirection(point - visualPathPoints[pointIndex - 1]);
             }
 
-            return (segments[pointIndex - 1].transform.position + segments[pointIndex].transform.position) * 0.5f;
-        }
-
-        private Vector3 GetVisualTangent(int pointIndex, Vector3 point)
-        {
-            if (pointIndex == 0)
-            {
-                Vector3 firstStep = GetVisualPoint(1) - point;
-                return firstStep.sqrMagnitude < 0.000001f ? Vector3.forward : firstStep.normalized;
-            }
-
-            if (pointIndex == visualPointCount - 1)
-            {
-                Vector3 lastStep = point - GetVisualPoint(pointIndex - 1);
-                return lastStep.sqrMagnitude < 0.000001f ? Vector3.forward : lastStep.normalized;
-            }
-
-            Vector3 previousStep = (point - GetVisualPoint(pointIndex - 1)).normalized;
-            Vector3 nextStep = (GetVisualPoint(pointIndex + 1) - point).normalized;
+            Vector3 previousStep = (point - visualPathPoints[pointIndex - 1]).normalized;
+            Vector3 nextStep = (visualPathPoints[pointIndex + 1] - point).normalized;
             Vector3 tangent = previousStep + nextStep;
             if (tangent.sqrMagnitude < 0.000001f)
             {
                 tangent = nextStep;
             }
 
-            return tangent.sqrMagnitude < 0.000001f ? Vector3.forward : tangent.normalized;
+            return SafeVisualDirection(tangent);
+        }
+
+        private static Vector3 SafeVisualDirection(Vector3 direction)
+        {
+            return direction.sqrMagnitude < 0.000001f ? Vector3.forward : direction.normalized;
         }
 
         private static Vector3 ChooseVisualNormal(Vector3 tangent)

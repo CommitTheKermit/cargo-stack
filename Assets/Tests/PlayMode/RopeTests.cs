@@ -175,6 +175,8 @@ namespace CargoStack.Tests
             Assert.NotNull(meshFilter.sharedMesh, "Rope Tool 시각 메시가 비어 있다");
             Assert.That(meshFilter.sharedMesh.vertexCount, Is.GreaterThan(0),
                 "Rope Tool 시각 메시 정점이 없다");
+            Assert.That(meshFilter.sharedMesh.vertexCount, Is.GreaterThan(rope.SegmentCount * 16),
+                "Rope Tool 시각 메시가 물리 마디만 따라가는 성긴 단일 표면이다");
             Assert.NotNull(meshRenderer, "Rope Tool 시각 렌더러가 없다");
             Assert.NotNull(meshRenderer.sharedMaterial, "Rope Tool 시각 머티리얼이 없다");
             Assert.IsNull(rope.GetComponent<LineRenderer>(),
