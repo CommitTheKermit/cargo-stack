@@ -66,7 +66,7 @@ namespace CargoStack.EditorTools
         // 겨울 패키지 프리팹은 원본 피벗과 가로 크기가 제각각이다. 특히 IcePlatform은
         // 높이에 비해 폭이 매우 넓어, 고정된 중심점 오프셋만으로는 얼음 도로를 침범할 수 있다.
         // 실제 Renderer.bounds를 기준으로 이 여백까지 확보한 뒤 도로 바깥으로 밀어낸다.
-        private const float WinterRoadVisualClearance = 2f;
+        private const float WinterRoadVisualClearance = 5f;
 
         // 가장자리 여백부터 바깥으로 이만큼의 띠 안에 흩뿌린다.
         private const float BandDepth = 27f;
@@ -393,7 +393,8 @@ namespace CargoStack.EditorTools
                 1,
                 roadHalfWidth);
 
-            // 얼음 플랫폼은 산과 산 사이의 낮은 지형에 두어 공식 패키지의 빙하 지형을 보강한다.
+            // 얼음 플랫폼은 넓은 원본 외곽 때문에 도로 가장자리에서 멀리 떼고,
+            // 산과 산 사이의 낮은 지형에 작게 두어 공식 패키지의 빙하 지형을 보강한다.
             float[] platformProgress = { 0.27f, 0.72f };
             for (int index = 0; index < platformProgress.Length; index++)
             {
@@ -409,7 +410,7 @@ namespace CargoStack.EditorTools
                     $"{WinterAssetPrefix}IcePlatform_{index:00}",
                     position,
                     null,
-                    3.8f,
+                    2.2f,
                     random,
                     center,
                     side,

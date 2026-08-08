@@ -443,6 +443,7 @@ namespace CargoStack.Tests
             GameObject environment)
         {
             const float roadHalfWidth = 6.5f;
+            const float visualClearance = 1.5f;
             Renderer[] renderers = environment.GetComponentsInChildren<Renderer>(true);
 
             for (int sample = 0; sample < route.SampleCount; sample++)
@@ -465,7 +466,7 @@ namespace CargoStack.Tests
 
                     Assert.That(
                         distance,
-                        Is.GreaterThanOrEqualTo(roadHalfWidth - 0.05f),
+                        Is.GreaterThanOrEqualTo(roadHalfWidth + visualClearance),
                         $"겨울 환경 렌더러가 도로를 막는다: {renderer.name}, "
                         + $"경로 샘플 {sample}, 중심선 거리 {distance:0.00}m");
                 }
