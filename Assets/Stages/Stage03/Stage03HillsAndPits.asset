@@ -16,7 +16,7 @@ MonoBehaviour:
   sceneName: Stage03_HillsAndPits
   showInMenu: 1
   displayName: Stage 03 · 오르락내리락
-  menuDescription: 박스 6개와 드럼통 3개 · 평지 → 구덩이 → 평지 → 언덕 → 평지
+  menuDescription: 대형 박스 3개·일반 상자 2개·드럼통 2개 · 구덩이와 언덕
   routeControlPoints:
   - {x: 0, y: 0, z: 0}
   - {x: 16, y: 0, z: 0}
@@ -80,9 +80,20 @@ MonoBehaviour:
     m_RotationOrder: 4
   cargo:
   - assetName: CardboardBox
-    maximumSize: {x: 0.9, y: 0.85, z: 0.9}
-    mass: 18
+    maximumSize: {x: 1.05, y: 2, z: 0.95}
+    mass: 55
     colliderShape: 0
+    stretchToMaximumSize: 1
+  - assetName: CardboardBox
+    maximumSize: {x: 1.05, y: 2, z: 0.95}
+    mass: 55
+    colliderShape: 0
+    stretchToMaximumSize: 1
+  - assetName: CardboardBox
+    maximumSize: {x: 1.05, y: 2, z: 0.95}
+    mass: 55
+    colliderShape: 0
+    stretchToMaximumSize: 1
   - assetName: BlueBarrel
     maximumSize: {x: 0.78, y: 0.95, z: 0.78}
     mass: 22
@@ -91,25 +102,9 @@ MonoBehaviour:
     maximumSize: {x: 0.82, y: 0.78, z: 0.82}
     mass: 20
     colliderShape: 0
-  - assetName: CardboardBox
-    maximumSize: {x: 0.75, y: 0.72, z: 0.75}
-    mass: 16
-    colliderShape: 0
   - assetName: BlueBarrel
     maximumSize: {x: 0.72, y: 0.88, z: 0.72}
     mass: 24
-    colliderShape: 1
-  - assetName: CardboardBox
-    maximumSize: {x: 0.86, y: 0.8, z: 0.86}
-    mass: 19
-    colliderShape: 0
-  - assetName: CardboardBox
-    maximumSize: {x: 0.78, y: 0.76, z: 0.78}
-    mass: 17
-    colliderShape: 0
-  - assetName: BlueBarrel
-    maximumSize: {x: 0.76, y: 0.92, z: 0.76}
-    mass: 23
     colliderShape: 1
   - assetName: CardboardBox
     maximumSize: {x: 0.84, y: 0.82, z: 0.84}
