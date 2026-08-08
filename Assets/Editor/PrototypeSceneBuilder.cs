@@ -60,6 +60,13 @@ namespace CargoStack.EditorTools
         private const float CabInteriorForbiddenCenterY = 1.25f;
         private const float CabInteriorForbiddenHeight = 3.5f;
 
+        // 짐칸 앞 격벽의 바로 뒤를 닫아, 낮은 격벽을 넘어온 화물이 캐빈 바닥으로
+        // 떨어지지 않게 하는 물리 전용 벽이다. 렌더러는 만들지 않는다.
+        private const float CabFrontCollisionWallThickness = BedWallThickness;
+        private const float CabFrontCollisionWallWidth = BedFrontBarrierWidth;
+        private const float CabFrontCollisionWallCenterY = CabInteriorForbiddenCenterY;
+        private const float CabFrontCollisionWallHeight = CabInteriorForbiddenHeight;
+
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
 
@@ -758,6 +765,7 @@ namespace CargoStack.EditorTools
             AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, false)
                 .gameObject.AddComponent<CargoPlacementForbiddenVolume>();
             AddCabInteriorPlacementForbiddenVolume(truck.transform);
+            AddCabFrontCollisionWall(truck.transform, bedMaterial, bedPhysics);
 
             float bedLengthWithWalls = BedInsideLength + BedWallThickness * 2f;
             float wallCenterY = BedFloorTop + BedWallHeight * 0.5f;
@@ -994,6 +1002,27 @@ namespace CargoStack.EditorTools
             // 삼는 실제 배치 경로도 OverlapBox에서만 막고 물리·조준을 바꾸지 않는다.
             collider.isTrigger = true;
             volume.AddComponent<CargoPlacementForbiddenVolume>();
+        }
+
+        private static void AddCabFrontCollisionWall(
+            Transform truck,
+            Material bedMaterial,
+            PhysicsMaterial bedPhysics)
+        {
+            AddPart(
+                truck,
+                "CabFrontCollisionWall",
+                new Vector3(
+                    CabInteriorForbiddenMinX + CabFrontCollisionWallThickness * 0.5f,
+                    CabFrontCollisionWallCenterY,
+                    BedCenterZ),
+                new Vector3(
+                    CabFrontCollisionWallThickness,
+                    CabFrontCollisionWallHeight,
+                    CabFrontCollisionWallWidth),
+                bedMaterial,
+                bedPhysics,
+                false);
         }
 
         /// <summary>

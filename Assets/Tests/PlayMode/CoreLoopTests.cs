@@ -35,6 +35,8 @@ namespace CargoStack.Tests
         private const float BedMaxZ = BedInsideWidth * 0.5f;
         private const float FrontCargoLimit = BedFrontBarrierX - BedWallThickness * 0.5f;
         private const float CabInteriorForbiddenMinX = BedFrontBarrierX + BedWallThickness * 0.5f;
+        private const float CabFrontCollisionWallHeight = 3.5f;
+        private const float CabFrontCollisionWallWidth = BedFrontBarrierWidth;
         private static readonly Vector3 TailgatePivotPosition =
             new(BedMinX - BedWallThickness * 0.5f, BedFloorTop, 0f);
         private GameFlow flow;
@@ -305,7 +307,7 @@ namespace CargoStack.Tests
             string[] physicsParts =
             {
                 "GroundSupport", "Chassis", "Cab", "BedFloor", "BedWall_Left",
-                "BedWall_Right", "BedWall_Front",
+                "BedWall_Right", "BedWall_Front", "CabFrontCollisionWall",
             };
             foreach (string partName in physicsParts)
             {
@@ -314,6 +316,16 @@ namespace CargoStack.Tests
                 Assert.NotNull(part.GetComponent<BoxCollider>(), $"공유 BoxCollider가 없다: {partName}");
                 Assert.IsNull(part.GetComponent<Renderer>(), $"보이지 않는 물리 프록시가 렌더링된다: {partName}");
             }
+
+            BoxCollider cabFrontCollisionWall =
+                truck.transform.Find("CabFrontCollisionWall").GetComponent<BoxCollider>();
+            Assert.IsFalse(cabFrontCollisionWall.isTrigger, "운전석 앞 투명벽이 Trigger라 화물을 막지 못한다");
+            Assert.That(
+                cabFrontCollisionWall.transform.localScale.y,
+                Is.EqualTo(CabFrontCollisionWallHeight).Within(0.001f));
+            Assert.That(
+                cabFrontCollisionWall.transform.localScale.z,
+                Is.EqualTo(CabFrontCollisionWallWidth).Within(0.001f));
 
             Transform rearWall = tailgate.transform.Find("BedWall_Rear");
             Assert.NotNull(rearWall, "테일게이트 아래에 후면 충돌벽이 없다");
@@ -703,6 +715,55 @@ namespace CargoStack.Tests
                 "화물 메시가 앞 격벽을 뚫고 캐빈에 들어갔다");
             Assert.That(proxy.bounds.min.y, Is.GreaterThanOrEqualTo(worldFloorTop - 0.04f),
                 "앞 격벽 충돌 뒤 화물이 바닥 아래로 빠졌다");
+        }
+
+        [UnityTest]
+        public IEnumerator 운전석_앞_투명벽은_격벽을_넘은_화물이_캐빈으로_떨어지는_것을_막는다()
+        {
+            Cargo impactCargo = FindCargoWithVisual("CardboardBox");
+            foreach (Cargo cargo in GetCargo())
+            {
+                if (cargo != impactCargo)
+                {
+                    cargo.gameObject.SetActive(false);
+                }
+            }
+
+            Transform wall = truck.transform.Find("CabFrontCollisionWall");
+            Assert.NotNull(wall, "운전석 앞 투명벽이 없다");
+            BoxCollider wallCollider = wall.GetComponent<BoxCollider>();
+            Assert.NotNull(wallCollider, "운전석 앞 투명벽에 BoxCollider가 없다");
+            Assert.IsFalse(wallCollider.isTrigger, "운전석 앞 투명벽이 Trigger라 화물을 막지 못한다");
+            Assert.IsNull(wall.GetComponent<Renderer>(), "운전석 앞 투명벽이 보이는 Renderer를 갖고 있다");
+
+            BoxCollider proxy = impactCargo.GetComponent<BoxCollider>();
+            float wallMinX = GetTruckLocalBounds(wallCollider.bounds).min.x;
+            float startCenterX = wallMinX - proxy.size.x * 0.5f - 0.55f;
+            float startCenterY = BedFloorTop + BedFrontBarrierHeight + proxy.size.y * 0.5f + 0.20f;
+            Rigidbody body = impactCargo.Body;
+            body.position = truck.transform.TransformPoint(new Vector3(startCenterX, startCenterY, 0f));
+            body.rotation = truck.transform.rotation;
+            body.linearVelocity = Vector3.zero;
+            body.angularVelocity = Vector3.zero;
+            impactCargo.transform.SetPositionAndRotation(body.position, body.rotation);
+            Physics.SyncTransforms();
+
+            yield return new WaitForFixedUpdate();
+            body.linearVelocity = truck.transform.right * 6f;
+
+            float furthestColliderX = float.NegativeInfinity;
+            for (int fixedStep = 0; fixedStep < 120; fixedStep++)
+            {
+                yield return new WaitForFixedUpdate();
+                furthestColliderX = Mathf.Max(
+                    furthestColliderX,
+                    GetTruckLocalBounds(proxy.bounds).max.x);
+            }
+
+            Assert.That(furthestColliderX, Is.GreaterThan(wallMinX - 0.25f),
+                "시험 화물이 운전석 앞 투명벽까지 도달하지 않았다");
+            Assert.That(furthestColliderX, Is.LessThanOrEqualTo(wallMinX + 0.08f),
+                "격벽을 넘어온 화물이 운전석 앞 투명벽을 통과했다");
         }
 
         [UnityTest]
