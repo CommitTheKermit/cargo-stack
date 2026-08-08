@@ -13,8 +13,8 @@ namespace CargoStack
         [SerializeField] private AudioClip engineLoop;
         [SerializeField] private float idlePitch = 0.78f;
         [SerializeField] private float drivingPitch = 1.35f;
-        [SerializeField] private float idleVolume = 0.16f;
-        [SerializeField] private float drivingVolume = 0.38f;
+        [SerializeField] private float idleVolume = 0.24f;
+        [SerializeField] private float drivingVolume = 0.58f;
         [SerializeField] private float responseSpeed = 5f;
 
         private TruckMover mover;
