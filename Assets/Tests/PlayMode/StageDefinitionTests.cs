@@ -420,6 +420,8 @@ namespace CargoStack.Tests
                 Is.GreaterThan(0),
                 "겨울 IcePlatform에 렌더러가 없다");
 
+            AssertWinterEnvironmentStaysOutsideRoad(route, environment);
+
             foreach (Renderer renderer in trees.GetComponentsInChildren<Renderer>(true))
             {
                 Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0));
@@ -434,6 +436,40 @@ namespace CargoStack.Tests
             Debug.Log(
                 $"[CargoStack] Stage05 겨울 경로: 길이 {route.TotalLength:0.0}m, "
                 + $"화물 {cargo.Length}개, 얼음 마찰 {roadCollider.sharedMaterial.dynamicFriction:0.00}");
+        }
+
+        private static void AssertWinterEnvironmentStaysOutsideRoad(
+            RoutePath route,
+            GameObject environment)
+        {
+            const float roadHalfWidth = 6.5f;
+            Renderer[] renderers = environment.GetComponentsInChildren<Renderer>(true);
+
+            for (int sample = 0; sample < route.SampleCount; sample++)
+            {
+                Vector3 routePoint = route.SampleAt(sample);
+                foreach (Renderer renderer in renderers)
+                {
+                    Bounds bounds = renderer.bounds;
+                    float closestX = Mathf.Clamp(
+                        routePoint.x,
+                        bounds.min.x,
+                        bounds.max.x);
+                    float closestZ = Mathf.Clamp(
+                        routePoint.z,
+                        bounds.min.z,
+                        bounds.max.z);
+                    float distance = Vector2.Distance(
+                        new Vector2(routePoint.x, routePoint.z),
+                        new Vector2(closestX, closestZ));
+
+                    Assert.That(
+                        distance,
+                        Is.GreaterThanOrEqualTo(roadHalfWidth - 0.05f),
+                        $"겨울 환경 렌더러가 도로를 막는다: {renderer.name}, "
+                        + $"경로 샘플 {sample}, 중심선 거리 {distance:0.00}m");
+                }
+            }
         }
 
         private static float MaxUvCoordinate(Vector2[] uvs, bool horizontal)
