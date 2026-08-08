@@ -757,9 +757,9 @@ namespace CargoStack.EditorTools
             // 바닥 지지대. 바닥면이 정확히 -RideHeight 라서 지면 추종 높이의 기준이 된다.
             AddPart(truck.transform, "GroundSupport", new Vector3(0f, -0.6f, 0f), new Vector3(4.6f, 0.3f, 1.9f), truckMaterial, bedPhysics, false);
             AddPart(truck.transform, "Chassis", new Vector3(0f, -0.05f, 0f), new Vector3(5.8f, 0.55f, 2.4f), truckMaterial, bedPhysics, false);
-            // 캐빈 콜라이더는 주행 중 화물이 들어오는 것을 막는 물리 차체이면서,
-            // 적재 조작에서는 명시적으로 배치 금지 구역이다.
-            AddPart(truck.transform, "Cab", new Vector3(1.9f, 0.7f, 0f), new Vector3(1.6f, 1.55f, 2.25f), truckMaterial, bedPhysics, false)
+            // 캐빈 뒤쪽 문(-0.15)~앞쪽 차체(2.7), 바닥(-0.075)~지붕(2.05)을
+            // 하나의 고체 박스로 막아 플레이어와 화물이 시각 메시를 관통하지 않게 한다.
+            AddPart(truck.transform, "Cab", new Vector3(1.275f, 0.9875f, 0f), new Vector3(2.85f, 2.125f, 2.25f), truckMaterial, bedPhysics, false)
                 .gameObject.AddComponent<CargoPlacementForbiddenVolume>();
             AddCabInteriorPlacementForbiddenVolume(truck.transform);
 

@@ -343,6 +343,10 @@ namespace CargoStack.Tests
                 new Vector3(BedCenterX, BedFloorTop, 0f),
                 "BedAnchor");
             AssertBedPartMatches(
+                "Cab",
+                new Vector3(1.275f, 0.9875f, 0f),
+                new Vector3(2.85f, 2.125f, 2.25f));
+            AssertBedPartMatches(
                 "BedFloor",
                 new Vector3(BedCenterX, BedFloorTop - BedFloorThickness * 0.5f, 0f),
                 new Vector3(BedInsideLength + BedWallThickness * 2f, BedFloorThickness, BedInsideWidth));
