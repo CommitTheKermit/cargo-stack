@@ -38,13 +38,11 @@ namespace CargoStack
         private PhysicsMaterial surfaceMaterial;
         private float visualRadius;
 
-        // HE_Rope_Tool.hda's "Rope" style rolls a small circular profile around
-        // the input curve. The runtime player cannot cook the HDA without
-        // Houdini Engine, so the visual fallback below uses three circular
-        // strands braided around that same curve. The 0.05 m curve resolution
-        // is important: rolling a sparse physics chain by 500 degrees per metre
-        // creates the same pinched, ribbon-like triangles that the asset avoids
-        // by resampling its input curve first.
+        // The supplied Meshy model is a coiled rope pile rather than a straight
+        // deformable strand. Its actual base-colour, normal, and roughness maps
+        // are therefore applied to a three-strand runtime surface that can still
+        // follow the physical chain. A 0.05 m curve resolution prevents the
+        // strand surface from collapsing into ribbon-like triangles.
         private const int VisualCrossSectionRows = 8;
         private const int VisualStrandCount = 3;
         private const float VisualStrandOrbitRatio = 0.52f;
@@ -52,6 +50,9 @@ namespace CargoStack
         private const float VisualSampleSpacing = 0.05f;
         private const int MaximumVisualPointCount = 512;
         private const float VisualTwistDegreesPerUnit = 500f;
+        private const string VisualBaseColorResource = "Rope/MeshyRope_BaseColor";
+        private const string VisualNormalResource = "Rope/MeshyRope_Normal";
+        private const string VisualMetallicSmoothnessResource = "Rope/MeshyRope_MetallicSmoothness";
 
         private Vector3[] visualControlPoints;
         private float[] visualControlDistances;
@@ -274,7 +275,7 @@ namespace CargoStack
 
             ConnectSegments(knots);
             IgnoreInternalCollisions(ignoredColliders);
-            CreateRopeToolVisual(settings);
+            CreateMeshyRopeVisual(settings);
         }
 
         /// <summary>꺾임점만 있는 선을 세그먼트 경계점으로 잘게 나눈다.</summary>
@@ -445,7 +446,7 @@ namespace CargoStack
             }
         }
 
-        private void CreateRopeToolVisual(RopeSettings settings)
+        private void CreateMeshyRopeVisual(RopeSettings settings)
         {
             visualRadius = settings.Radius;
             visualControlPointCount = segments.Count + 2;
@@ -490,7 +491,7 @@ namespace CargoStack
             visualRenderer = gameObject.AddComponent<MeshRenderer>();
             visualMesh = new Mesh
             {
-                name = "RopeToolVisualMesh",
+                name = "MeshyRopeVisualMesh",
             };
             visualMesh.MarkDynamic();
             visualMesh.vertices = visualVertices;
@@ -511,18 +512,20 @@ namespace CargoStack
 
             visualMaterial = new Material(shader)
             {
-                name = "RopeToolVisualMaterial",
-                color = settings.Color,
+                name = "MeshyRopeVisualMaterial",
+                color = Color.white,
             };
             if (visualMaterial.HasProperty("_BaseColor"))
             {
-                visualMaterial.SetColor("_BaseColor", settings.Color);
+                visualMaterial.SetColor("_BaseColor", Color.white);
             }
 
             if (visualMaterial.HasProperty("_Color"))
             {
-                visualMaterial.SetColor("_Color", settings.Color);
+                visualMaterial.SetColor("_Color", Color.white);
             }
+
+            ApplyMeshyTextures();
 
             if (visualMaterial.HasProperty("_Metallic"))
             {
@@ -531,13 +534,47 @@ namespace CargoStack
 
             if (visualMaterial.HasProperty("_Smoothness"))
             {
-                visualMaterial.SetFloat("_Smoothness", 0.45f);
+                visualMaterial.SetFloat("_Smoothness", 1f);
             }
 
             visualRenderer.sharedMaterial = visualMaterial;
             visualRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             visualRenderer.receiveShadows = true;
             RedrawVisual();
+        }
+
+        private void ApplyMeshyTextures()
+        {
+            Texture2D baseColor = Resources.Load<Texture2D>(VisualBaseColorResource);
+            Texture2D normal = Resources.Load<Texture2D>(VisualNormalResource);
+            Texture2D metallicSmoothness = Resources.Load<Texture2D>(VisualMetallicSmoothnessResource);
+
+            SetMaterialTexture("_BaseMap", baseColor);
+            SetMaterialTexture("_MainTex", baseColor);
+
+            if (normal != null && visualMaterial.HasProperty("_BumpMap"))
+            {
+                visualMaterial.SetTexture("_BumpMap", normal);
+                if (visualMaterial.HasProperty("_BumpScale"))
+                {
+                    visualMaterial.SetFloat("_BumpScale", 0.7f);
+                }
+                visualMaterial.EnableKeyword("_NORMALMAP");
+            }
+
+            if (metallicSmoothness != null && visualMaterial.HasProperty("_MetallicGlossMap"))
+            {
+                visualMaterial.SetTexture("_MetallicGlossMap", metallicSmoothness);
+                visualMaterial.EnableKeyword("_METALLICSPECGLOSSMAP");
+            }
+        }
+
+        private void SetMaterialTexture(string propertyName, Texture texture)
+        {
+            if (texture != null && visualMaterial.HasProperty(propertyName))
+            {
+                visualMaterial.SetTexture(propertyName, texture);
+            }
         }
 
         private void LateUpdate()
