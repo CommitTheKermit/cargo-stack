@@ -77,6 +77,12 @@ namespace CargoStack.EditorTools
         /// </summary>
         private const float GroundDropBelowRoad = 0.05f;
 
+        /// <summary>플레이어와 화물이 지면 리본 밖으로 빠지지 않게 두르는 보이지 않는 충돌벽.</summary>
+        private const float GroundBoundaryHeight = 4f;
+        private const float GroundBoundaryDepth = 1f;
+        private const float GroundBoundaryThickness = 0.6f;
+        private const float GroundBoundaryOverlap = 1.5f;
+
         /// <summary>도로 조각을 이웃과 겹치게 늘리는 배율. 커브 바깥쪽이 벌어지는 것을 막는다.</summary>
         private const float RoadBlockOverlap = 1.5f;
 
@@ -540,6 +546,121 @@ namespace CargoStack.EditorTools
             // 콜라이더가 없으면 도로 밖으로 나갔을 때 발밑이 비어 아래로 떨어진다.
             // 지면을 도로와 같은 Ground 레이어에 두어 플레이어가 그 위를 걸을 수 있게 한다.
             surface.AddComponent<MeshCollider>().sharedMesh = mesh;
+
+            BuildGroundBoundary(route, groundLayer, ground.transform);
+        }
+
+        /// <summary>
+        /// 지면 리본의 좌우 가장자리와 양 끝을 보이지 않는 BoxCollider로 막는다.
+        /// 각 벽은 월드 Y축으로 곧게 세우고 해당 구간의 최저·최고 지형 높이를 모두 덮어,
+        /// 경사나 구덩이에서도 벽 아래 틈과 낮은 벽턱이 생기지 않게 한다.
+        /// </summary>
+        private static void BuildGroundBoundary(RoutePath route, int groundLayer, Transform parent)
+        {
+            var boundary = new GameObject("GroundBoundary")
+            {
+                layer = groundLayer,
+                isStatic = true,
+            };
+            boundary.transform.SetParent(parent, false);
+
+            for (int index = 0; index < route.SampleCount - 1; index++)
+            {
+                Vector3 from = route.SampleAt(index);
+                Vector3 to = route.SampleAt(index + 1);
+                Vector3 heading = Vector3.ProjectOnPlane(to - from, Vector3.up);
+                float length = heading.magnitude;
+                if (length < 1e-4f)
+                {
+                    continue;
+                }
+
+                heading /= length;
+                Vector3 side = Vector3.Cross(Vector3.up, heading) * GroundHalfWidth;
+                Quaternion rotation = Quaternion.LookRotation(heading, Vector3.up);
+                float lowestSurface = Mathf.Min(from.y, to.y) - GroundDropBelowRoad;
+                float highestSurface = Mathf.Max(from.y, to.y) - GroundDropBelowRoad;
+                float bottom = lowestSurface - GroundBoundaryDepth;
+                float top = highestSurface + GroundBoundaryHeight;
+                Vector3 wallCenter = (from + to) * 0.5f;
+                wallCenter.y = (bottom + top) * 0.5f;
+                Vector3 size = new(
+                    GroundBoundaryThickness,
+                    top - bottom,
+                    length * GroundBoundaryOverlap);
+
+                AddGroundBoundaryWall(
+                    boundary.transform,
+                    $"Boundary_Left_{index:000}",
+                    groundLayer,
+                    wallCenter - side,
+                    rotation,
+                    size);
+                AddGroundBoundaryWall(
+                    boundary.transform,
+                    $"Boundary_Right_{index:000}",
+                    groundLayer,
+                    wallCenter + side,
+                    rotation,
+                    size);
+            }
+
+            AddGroundBoundaryCap(
+                boundary.transform,
+                "Boundary_Start",
+                groundLayer,
+                route.SampleAt(0),
+                route.SampleAt(1) - route.SampleAt(0));
+            int last = route.SampleCount - 1;
+            AddGroundBoundaryCap(
+                boundary.transform,
+                "Boundary_End",
+                groundLayer,
+                route.SampleAt(last),
+                route.SampleAt(last) - route.SampleAt(last - 1));
+        }
+
+        private static void AddGroundBoundaryCap(
+            Transform parent,
+            string name,
+            int layer,
+            Vector3 routePoint,
+            Vector3 heading)
+        {
+            heading = Vector3.ProjectOnPlane(heading, Vector3.up).normalized;
+            Quaternion rotation = Quaternion.LookRotation(heading, Vector3.up);
+            float surfaceHeight = routePoint.y - GroundDropBelowRoad;
+            Vector3 position = routePoint;
+            position.y = surfaceHeight
+                + (GroundBoundaryHeight - GroundBoundaryDepth) * 0.5f;
+            AddGroundBoundaryWall(
+                parent,
+                name,
+                layer,
+                position,
+                rotation,
+                new Vector3(
+                    GroundHalfWidth * 2f + GroundBoundaryThickness * 2f,
+                    GroundBoundaryHeight + GroundBoundaryDepth,
+                    GroundBoundaryThickness));
+        }
+
+        private static void AddGroundBoundaryWall(
+            Transform parent,
+            string name,
+            int layer,
+            Vector3 position,
+            Quaternion rotation,
+            Vector3 size)
+        {
+            var wall = new GameObject(name)
+            {
+                layer = layer,
+                isStatic = true,
+            };
+            wall.transform.SetParent(parent, false);
+            wall.transform.SetPositionAndRotation(position, rotation);
+            wall.AddComponent<BoxCollider>().size = size;
         }
 
         /// <summary>
