@@ -348,31 +348,84 @@ namespace CargoStack.Tests
             Assert.That(
                 environment.GetComponentsInChildren<Renderer>(true).Length,
                 Is.GreaterThan(0),
-                "겨울 월드에 눈 숲·바위 시각물이 없다");
+                "겨울 월드에 눈·얼음 시각물이 없다");
 
             Transform trees = environment.transform.Find("Trees");
             Assert.NotNull(trees, "겨울 나무 컨테이너가 없다");
-            bool hasSnowyTreeMaterial = false;
-            foreach (Renderer renderer in trees.GetComponentsInChildren<Renderer>(true))
+            Transform landmarks = environment.transform.Find("IceLandmarks");
+            Transform snowmen = environment.transform.Find("Snowmen");
+            Transform platforms = environment.transform.Find("IcePlatforms");
+            Assert.NotNull(landmarks, "MochiModels 얼음 지형 컨테이너가 없다");
+            Assert.NotNull(snowmen, "MochiModels 눈사람 컨테이너가 없다");
+            Assert.NotNull(platforms, "MochiModels 얼음 플랫폼 컨테이너가 없다");
+
+            bool hasMochiTree = false;
+            bool hasMochiMountain = false;
+            bool hasMochiCave = false;
+            bool hasMochiRock = false;
+            bool hasMochiSnowman = false;
+            bool hasMochiPlatform = false;
+            foreach (Transform item in environment.GetComponentsInChildren<Transform>(true))
             {
-                foreach (Material material in renderer.sharedMaterials)
+                if (!item.name.StartsWith("MochiModels_"))
                 {
-                    if (material != null && material.name == "Snow")
-                    {
-                        hasSnowyTreeMaterial = true;
-                        break;
-                    }
+                    continue;
                 }
 
-                if (hasSnowyTreeMaterial)
-                {
-                    break;
-                }
+                hasMochiTree |= item.name.Contains("IceTree");
+                hasMochiMountain |= item.name.Contains("IceMountain");
+                hasMochiCave |= item.name.Contains("IceCave");
+                hasMochiRock |= item.name.Contains("IceRock");
+                hasMochiSnowman |= item.name.Contains("Snowman");
+                hasMochiPlatform |= item.name.Contains("IcePlatform");
             }
 
             Assert.IsTrue(
-                hasSnowyTreeMaterial,
-                "Snowy Low-Poly Trees의 Snow 재질이 겨울 나무에 연결되지 않았다");
+                hasMochiTree,
+                "MochiModels 3D Low Poly Environment Assets의 IceTree가 겨울 나무에 연결되지 않았다");
+            Assert.IsTrue(
+                hasMochiMountain,
+                "MochiModels 3D Low Poly Environment Assets의 IceMountain이 겨울 지형에 연결되지 않았다");
+            Assert.IsTrue(
+                hasMochiCave,
+                "MochiModels 3D Low Poly Environment Assets의 IceCave가 겨울 지형에 연결되지 않았다");
+            Assert.IsTrue(
+                hasMochiRock,
+                "MochiModels 3D Low Poly Environment Assets의 IceRock이 겨울 지형에 연결되지 않았다");
+            Assert.IsTrue(
+                hasMochiSnowman,
+                "MochiModels 3D Low Poly Environment Assets의 Snowman이 겨울 지형에 연결되지 않았다");
+            Assert.IsTrue(
+                hasMochiPlatform,
+                "MochiModels 3D Low Poly Environment Assets의 IcePlatform이 겨울 지형에 연결되지 않았다");
+
+            Assert.That(
+                landmarks.GetComponentsInChildren<Renderer>(true).Length,
+                Is.GreaterThan(0),
+                "겨울 얼음 랜드마크에 렌더러가 없다");
+            Assert.That(
+                trees.GetComponentsInChildren<Renderer>(true).Length,
+                Is.GreaterThan(0),
+                "겨울 IceTree에 렌더러가 없다");
+            Assert.That(
+                snowmen.GetComponentsInChildren<Renderer>(true).Length,
+                Is.GreaterThan(0),
+                "겨울 Snowman에 렌더러가 없다");
+            Assert.That(
+                platforms.GetComponentsInChildren<Renderer>(true).Length,
+                Is.GreaterThan(0),
+                "겨울 IcePlatform에 렌더러가 없다");
+
+            foreach (Renderer renderer in trees.GetComponentsInChildren<Renderer>(true))
+            {
+                Assert.That(renderer.sharedMaterials.Length, Is.GreaterThan(0));
+                foreach (Material material in renderer.sharedMaterials)
+                {
+                    Assert.NotNull(
+                        material,
+                        "MochiModels IceTree의 원본 재질이 제거되었다");
+                }
+            }
 
             Debug.Log(
                 $"[CargoStack] Stage05 겨울 경로: 길이 {route.TotalLength:0.0}m, "
