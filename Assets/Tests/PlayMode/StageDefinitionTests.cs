@@ -305,6 +305,11 @@ namespace CargoStack.Tests
             Assert.NotNull(roadMaterial, "얼음 도로 재질이 없다");
             Assert.AreEqual("IceRoad", roadMaterial.name);
             Assert.That(roadMaterial.GetFloat("_Glossiness"), Is.GreaterThan(0.8f));
+            Assert.NotNull(roadMaterial.mainTexture, "4K 얼음 텍스처가 얼음 도로 재질에 연결되지 않았다");
+            Assert.AreEqual(
+                "ice_toon_smooth_1",
+                roadMaterial.mainTexture.name,
+                "Asset Store 4K 얼음 텍스처가 아닌 재질이 연결되었다");
             Assert.NotNull(roadCollider, "얼음 도로 물리 표면이 없다");
             Assert.NotNull(roadCollider.sharedMaterial, "얼음 도로 저마찰 재질이 연결되지 않았다");
             Assert.That(roadCollider.sharedMaterial.dynamicFriction, Is.LessThan(0.1f));
@@ -314,11 +319,40 @@ namespace CargoStack.Tests
             Material groundMaterial = groundSurface.GetComponent<MeshRenderer>().sharedMaterial;
             Assert.NotNull(groundMaterial, "눈 지면 재질이 없다");
             Assert.AreEqual("SnowGround", groundMaterial.name);
+            Assert.NotNull(groundMaterial.mainTexture, "4K 눈 텍스처가 눈 지면 재질에 연결되지 않았다");
+            Assert.AreEqual(
+                "snow_solid_1",
+                groundMaterial.mainTexture.name,
+                "Asset Store 4K 눈 텍스처가 아닌 재질이 연결되었다");
             Assert.NotNull(environment, "겨울 환경 배치가 없다");
             Assert.That(
                 environment.GetComponentsInChildren<Renderer>(true).Length,
                 Is.GreaterThan(0),
                 "겨울 월드에 눈 숲·바위 시각물이 없다");
+
+            Transform trees = environment.transform.Find("Trees");
+            Assert.NotNull(trees, "겨울 나무 컨테이너가 없다");
+            bool hasSnowyTreeMaterial = false;
+            foreach (Renderer renderer in trees.GetComponentsInChildren<Renderer>(true))
+            {
+                foreach (Material material in renderer.sharedMaterials)
+                {
+                    if (material != null && material.name == "Snow")
+                    {
+                        hasSnowyTreeMaterial = true;
+                        break;
+                    }
+                }
+
+                if (hasSnowyTreeMaterial)
+                {
+                    break;
+                }
+            }
+
+            Assert.IsTrue(
+                hasSnowyTreeMaterial,
+                "Snowy Low-Poly Trees의 Snow 재질이 겨울 나무에 연결되지 않았다");
 
             Debug.Log(
                 $"[CargoStack] Stage05 겨울 경로: 길이 {route.TotalLength:0.0}m, "

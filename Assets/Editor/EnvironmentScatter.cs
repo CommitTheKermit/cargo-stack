@@ -12,9 +12,11 @@ namespace CargoStack.EditorTools
     /// 씬은 손으로 고치지 않고 <see cref="PrototypeSceneBuilder"/> 가 다시 만든다는 원칙(AGENTS.md 3장)을
     /// 그대로 따른다. 그래서 환경도 씬에 손으로 심지 않고 여기서 재생성한다.
     ///
-    /// 나무·바위 모델은 Broken Vector 의 "Low Poly Tree Pack" / "Low Poly Rock Pack" 을 쓴다
-    /// (Assets/Environment/LowPoly*Pack). itch.io 무료판은 .dae 모델과 공용 컬러시트 텍스처로 오므로,
-    /// 프리팹 대신 임포트된 모델(GameObject)을 바로 인스턴스화하고 컬러시트 재질을 입힌다.
+    /// 기본 나무·바위 모델은 Broken Vector 의 "Low Poly Tree Pack" / "Low Poly Rock Pack" 을 쓴다
+    /// (Assets/Environment/LowPoly*Pack). 겨울 스테이지에 "Snowy Low-Poly Trees"가 임포트되어 있으면
+    /// 그 패키지의 눈 덮인 소나무 프리팹을 우선 사용하고, 프리팹 자체의 눈 재질을 보존한다.
+    /// 기본 팩은 .dae 모델과 공용 컬러시트 텍스처로 오므로, 프리팹 대신 임포트된 모델(GameObject)을
+    /// 바로 인스턴스화하고 컬러시트 재질을 입힌다.
     /// 팩마다 모델 이름이 제각각이라(Tree Type1 01, Rock Type3 02 …) 이름으로는 못 잡는다. 대신
     /// 임포트되는 <b>팩 폴더 경로</b>에 "tree" / "rock" 이 들어간다는 점을 이용해 폴더 기준으로 모은다.
     /// 폴더명이 예상과 다르면 <see cref="TreeFolderKeyword"/> / <see cref="RockFolderKeyword"/> 만 고치면 된다.
@@ -39,6 +41,7 @@ namespace CargoStack.EditorTools
         };
 
         private const string TreeFolderKeyword = "tree";
+        private const string SnowyTreeModelKeyword = "pine_snowy";
         private const string RockFolderKeyword = "rock";
 
         private const string MaterialFolder = "Assets/Environment";
@@ -109,7 +112,14 @@ namespace CargoStack.EditorTools
                 throw new ArgumentNullException(nameof(route));
             }
 
-            GameObject[] trees = DiscoverModels(TreeFolderKeyword);
+            GameObject[] trees = winter
+                ? DiscoverModels(SnowyTreeModelKeyword)
+                : DiscoverModels(TreeFolderKeyword);
+            bool usingSnowyTreePrefabs = winter && trees.Length > 0;
+            if (trees.Length == 0)
+            {
+                trees = DiscoverModels(TreeFolderKeyword);
+            }
             GameObject[] rocks = DiscoverModels(RockFolderKeyword);
 
             if (trees.Length == 0 && rocks.Length == 0)
@@ -121,10 +131,12 @@ namespace CargoStack.EditorTools
                 return null;
             }
 
-            Material treeMaterial = EnsureColorsheetMaterial(
-                winter ? WinterTreeMaterialPath : TreeMaterialPath,
-                TreeFolderKeyword,
-                winter ? WinterTreeColorPreference : DefaultTreeColorPreference);
+            Material treeMaterial = usingSnowyTreePrefabs
+                ? null
+                : EnsureColorsheetMaterial(
+                    winter ? WinterTreeMaterialPath : TreeMaterialPath,
+                    TreeFolderKeyword,
+                    winter ? WinterTreeColorPreference : DefaultTreeColorPreference);
             Material rockMaterial = EnsureColorsheetMaterial(
                 RockMaterialPath, RockFolderKeyword, RockColorPreference);
 
@@ -208,7 +220,8 @@ namespace CargoStack.EditorTools
             // 첫 나무의 크기를 남겨 세워졌는지(높이 y 가 가로/세로보다 큰지) 확인할 수 있게 한다.
             Debug.Log(
                 $"[CargoStack] 환경 배치 완료: 나무 {treeCount}그루, 바위 {rockCount}개 "
-                + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종, "
+                        + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종, "
+                + $"나무 소스 {(usingSnowyTreePrefabs ? "Snowy Low-Poly Trees" : "기본 환경 팩")}, "
                 + $"계절 {(winter ? "겨울" : "기본")}). "
                 + $"첫 나무 크기(WxHxD) = {firstTreeSize.x:0.0} x {firstTreeSize.y:0.0} x {firstTreeSize.z:0.0} m");
             return environment.gameObject;

@@ -1496,7 +1496,7 @@ namespace CargoStack.EditorTools
 
         private static Material EnsureWinterRoadMaterial()
         {
-            Texture2D albedo = FindWinterTexture("ice", false);
+            Texture2D albedo = FindWinterTexture("ice", false, "ice_toon_smooth_1");
             Texture2D normal = FindWinterTexture("ice", true);
             if (albedo == null)
             {
@@ -1517,7 +1517,7 @@ namespace CargoStack.EditorTools
 
         private static Material EnsureSnowGroundMaterial()
         {
-            Texture2D albedo = FindWinterTexture("snow", false);
+            Texture2D albedo = FindWinterTexture("snow", false, "snow_solid_1");
             Texture2D normal = FindWinterTexture("snow", true);
             if (albedo == null)
             {
@@ -1592,7 +1592,10 @@ namespace CargoStack.EditorTools
             }
         }
 
-        private static Texture2D FindWinterTexture(string keyword, bool normalMap)
+        private static Texture2D FindWinterTexture(
+            string keyword,
+            bool normalMap,
+            string preferredFileName = null)
         {
             string[] guids = AssetDatabase.FindAssets("t:Texture2D");
             Texture2D fallback = null;
@@ -1617,6 +1620,12 @@ namespace CargoStack.EditorTools
                 if (texture == null)
                 {
                     continue;
+                }
+
+                if (!string.IsNullOrEmpty(preferredFileName)
+                    && Path.GetFileNameWithoutExtension(lower).Contains(preferredFileName))
+                {
+                    return texture;
                 }
 
                 if (fallback == null)
