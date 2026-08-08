@@ -74,10 +74,12 @@ namespace CargoStack.EditorTools
 
         private const float RoadWidth = 13f;
         private const float RoadThickness = 1.2f;
+        private const float RoadTextureTileSize = 8f;
 
         /// <summary>도로 양옆에 까는 잔디 지면의 절반 폭. 나무·바위가 이 위에 선다.</summary>
         private const float GroundHalfWidth = 38f;
         private const float GroundThickness = 2f;
+        private const float GroundTextureTileSize = 8f;
 
         /// <summary>
         /// 지면을 도로 윗면보다 이만큼만 살짝 낮춘다. 도로/지면 표면이 겹쳐 z-파이팅 나는 것은 막되,
@@ -487,10 +489,17 @@ namespace CargoStack.EditorTools
         {
             int count = route.SampleCount;
             var vertices = new Vector3[count * 4];
+            var uvs = new Vector2[count * 4];
+            float distance = 0f;
 
             for (int i = 0; i < count; i++)
             {
                 Vector3 point = route.SampleAt(i);
+                if (i > 0)
+                {
+                    distance += Vector3.Distance(route.SampleAt(i - 1), point);
+                }
+
                 Vector3 heading = route.SampleAt(Mathf.Min(i + 1, count - 1))
                     - route.SampleAt(Mathf.Max(i - 1, 0));
                 heading.y = 0f;
@@ -502,6 +511,13 @@ namespace CargoStack.EditorTools
                 vertices[i * 4 + 1] = point + side;          // 오른쪽 모서리
                 vertices[i * 4 + 2] = point - side + skirt;
                 vertices[i * 4 + 3] = point + side + skirt;
+
+                float u = distance / RoadTextureTileSize;
+                float v = RoadWidth / RoadTextureTileSize;
+                uvs[i * 4 + 0] = new Vector2(u, 0f);
+                uvs[i * 4 + 1] = new Vector2(u, v);
+                uvs[i * 4 + 2] = uvs[i * 4 + 0];
+                uvs[i * 4 + 3] = uvs[i * 4 + 1];
             }
 
             var triangles = new List<int>((count - 1) * 18);
@@ -526,6 +542,7 @@ namespace CargoStack.EditorTools
             var mesh = new Mesh { name = $"{sceneName}_RoadSurface" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -544,6 +561,7 @@ namespace CargoStack.EditorTools
             existing.Clear();
             existing.SetVertices(vertices);
             existing.SetTriangles(triangles, 0);
+            existing.SetUVs(0, uvs);
             existing.RecalculateNormals();
             existing.RecalculateBounds();
             EditorUtility.SetDirty(existing);
@@ -695,10 +713,17 @@ namespace CargoStack.EditorTools
         {
             int count = route.SampleCount;
             var vertices = new Vector3[count * 4];
+            var uvs = new Vector2[count * 4];
+            float distance = 0f;
 
             for (int i = 0; i < count; i++)
             {
                 Vector3 point = route.SampleAt(i);
+                if (i > 0)
+                {
+                    distance += Vector3.Distance(route.SampleAt(i - 1), point);
+                }
+
                 Vector3 heading = route.SampleAt(Mathf.Min(i + 1, count - 1))
                     - route.SampleAt(Mathf.Max(i - 1, 0));
                 heading.y = 0f;
@@ -711,6 +736,13 @@ namespace CargoStack.EditorTools
                 vertices[i * 4 + 1] = top + side;
                 vertices[i * 4 + 2] = top - side + skirt;
                 vertices[i * 4 + 3] = top + side + skirt;
+
+                float u = distance / GroundTextureTileSize;
+                float v = (GroundHalfWidth * 2f) / GroundTextureTileSize;
+                uvs[i * 4 + 0] = new Vector2(u, 0f);
+                uvs[i * 4 + 1] = new Vector2(u, v);
+                uvs[i * 4 + 2] = uvs[i * 4 + 0];
+                uvs[i * 4 + 3] = uvs[i * 4 + 1];
             }
 
             var triangles = new List<int>((count - 1) * 18);
@@ -735,6 +767,7 @@ namespace CargoStack.EditorTools
             var mesh = new Mesh { name = $"{sceneName}_Ground" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -752,6 +785,7 @@ namespace CargoStack.EditorTools
             existing.Clear();
             existing.SetVertices(vertices);
             existing.SetTriangles(triangles, 0);
+            existing.SetUVs(0, uvs);
             existing.RecalculateNormals();
             existing.RecalculateBounds();
             EditorUtility.SetDirty(existing);

@@ -310,6 +310,16 @@ namespace CargoStack.Tests
                 "ice_toon_smooth_1",
                 roadMaterial.mainTexture.name,
                 "Asset Store 4K 얼음 텍스처가 아닌 재질이 연결되었다");
+            Vector2[] roadUvs = roadSurface.GetComponent<MeshFilter>().sharedMesh.uv;
+            Assert.That(roadUvs.Length, Is.GreaterThan(0), "얼음 도로 메시의 UV가 없다");
+            Assert.That(
+                MaxUvCoordinate(roadUvs, true),
+                Is.GreaterThan(20f),
+                "얼음 텍스처가 도로 길이 방향으로 타일링되지 않는다");
+            Assert.That(
+                MaxUvCoordinate(roadUvs, false),
+                Is.GreaterThan(1f),
+                "얼음 텍스처가 도로 폭 방향으로 매핑되지 않는다");
             Assert.NotNull(roadCollider, "얼음 도로 물리 표면이 없다");
             Assert.NotNull(roadCollider.sharedMaterial, "얼음 도로 저마찰 재질이 연결되지 않았다");
             Assert.That(roadCollider.sharedMaterial.dynamicFriction, Is.LessThan(0.1f));
@@ -324,6 +334,16 @@ namespace CargoStack.Tests
                 "snow_solid_1",
                 groundMaterial.mainTexture.name,
                 "Asset Store 4K 눈 텍스처가 아닌 재질이 연결되었다");
+            Vector2[] groundUvs = groundSurface.GetComponent<MeshFilter>().sharedMesh.uv;
+            Assert.That(groundUvs.Length, Is.GreaterThan(0), "눈 지면 메시의 UV가 없다");
+            Assert.That(
+                MaxUvCoordinate(groundUvs, true),
+                Is.GreaterThan(20f),
+                "눈 텍스처가 지면 길이 방향으로 타일링되지 않는다");
+            Assert.That(
+                MaxUvCoordinate(groundUvs, false),
+                Is.GreaterThan(5f),
+                "눈 텍스처가 지면 폭 방향으로 타일링되지 않는다");
             Assert.NotNull(environment, "겨울 환경 배치가 없다");
             Assert.That(
                 environment.GetComponentsInChildren<Renderer>(true).Length,
@@ -357,6 +377,17 @@ namespace CargoStack.Tests
             Debug.Log(
                 $"[CargoStack] Stage05 겨울 경로: 길이 {route.TotalLength:0.0}m, "
                 + $"화물 {cargo.Length}개, 얼음 마찰 {roadCollider.sharedMaterial.dynamicFriction:0.00}");
+        }
+
+        private static float MaxUvCoordinate(Vector2[] uvs, bool horizontal)
+        {
+            float maximum = float.MinValue;
+            foreach (Vector2 uv in uvs)
+            {
+                maximum = Mathf.Max(maximum, horizontal ? uv.x : uv.y);
+            }
+
+            return maximum;
         }
 
         [UnityTest]
