@@ -179,6 +179,104 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 네번째_스테이지는_복합_코스에_대형_박스를_포함한_다양한_화물_여덟개를_만든다()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "Stage04_ComplexRoute",
+                LoadSceneMode.Single);
+
+            StageContext context = Object.FindAnyObjectByType<StageContext>();
+            RoutePath route = Object.FindAnyObjectByType<RoutePath>();
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>();
+
+            Assert.NotNull(context, "StageContext가 없다");
+            Assert.NotNull(context.Definition, "스테이지 정의가 연결되지 않았다");
+            Assert.AreEqual("stage-04", context.Definition.StageId);
+            Assert.AreEqual(SceneManager.GetActiveScene().name, context.Definition.SceneName);
+            Assert.NotNull(route, "경로가 생성되지 않았다");
+            Assert.That(route.TotalLength, Is.GreaterThan(180f));
+            Assert.AreEqual(8, cargo.Length, "Stage 04 화물은 여덟 개여야 한다");
+            Assert.IsTrue(
+                context.Definition.Cargo[0].StretchToMaximumSize,
+                "첫 화물의 대형 박스 비균등 크기 조절이 꺼져 있다");
+
+            int hills = CountHeightRegions(route, pointHeight => pointHeight > 2f);
+            int pits = CountHeightRegions(route, pointHeight => pointHeight < -1f);
+            float lowestZ = float.PositiveInfinity;
+            float highestZ = float.NegativeInfinity;
+            for (int index = 0; index < route.SampleCount; index++)
+            {
+                float lateral = route.SampleAt(index).z;
+                lowestZ = Mathf.Min(lowestZ, lateral);
+                highestZ = Mathf.Max(highestZ, lateral);
+            }
+
+            Debug.Log(
+                $"[CargoStack] Stage04 경로: 길이 {route.TotalLength:0.0}m, "
+                + $"언덕 {hills}개, 구덩이 {pits}개, 좌우 변화 {highestZ - lowestZ:0.0}m");
+            Assert.That(hills, Is.GreaterThanOrEqualTo(2), "복합 코스에 언덕이 충분하지 않다");
+            Assert.That(pits, Is.GreaterThanOrEqualTo(2), "복합 코스에 구덩이가 충분하지 않다");
+            Assert.That(highestZ - lowestZ, Is.GreaterThan(12f), "S자 좌우 굴곡이 충분하지 않다");
+
+            int cardboardBoxes = 0;
+            int barrels = 0;
+            int busts = 0;
+            int lamps = 0;
+            BoxCollider largeBox = null;
+            foreach (Cargo item in cargo)
+            {
+                foreach (Transform child in item.transform)
+                {
+                    switch (child.name)
+                    {
+                        case "ImportedVisual_CardboardBox":
+                            cardboardBoxes++;
+                            BoxCollider box = item.GetComponent<BoxCollider>();
+                            if (largeBox == null || box.size.y > largeBox.size.y)
+                            {
+                                largeBox = box;
+                            }
+                            break;
+                        case "ImportedVisual_BlueBarrel":
+                            barrels++;
+                            break;
+                        case "ImportedVisual_MarbleBust":
+                            busts++;
+                            break;
+                        case "ImportedVisual_FloorLamp":
+                            lamps++;
+                            break;
+                    }
+                }
+            }
+
+            Assert.AreEqual(2, cardboardBoxes, "상자 화물은 두 개여야 한다");
+            Assert.AreEqual(2, barrels, "드럼통 화물은 두 개여야 한다");
+            Assert.AreEqual(2, busts, "대리석 흉상 화물은 두 개여야 한다");
+            Assert.AreEqual(2, lamps, "스탠드 조명 화물은 두 개여야 한다");
+            Assert.NotNull(largeBox, "대형 박스가 없다");
+            Rigidbody largeBoxBody = largeBox.GetComponent<Rigidbody>();
+            Debug.Log(
+                $"[CargoStack] Stage04 대형 박스: 크기 "
+                + $"{largeBox.size.x:0.00}×{largeBox.size.y:0.00}×{largeBox.size.z:0.00}m, "
+                + $"질량 {largeBoxBody.mass:0.0}kg");
+            Assert.That(largeBox.size.x, Is.GreaterThan(1f), "대형 박스 폭이 충분하지 않다");
+            Assert.That(largeBox.size.y, Is.GreaterThan(1.9f), "대형 박스가 냉장고처럼 길쭉하지 않다");
+
+            PlayerController player = Object.FindAnyObjectByType<PlayerController>();
+            PlayerCargoInteractor interactor =
+                Object.FindAnyObjectByType<PlayerCargoInteractor>();
+            player.SetWorldPose(
+                largeBox.transform.position + Vector3.back,
+                Quaternion.identity,
+                Vector3.zero);
+            yield return new WaitForFixedUpdate();
+            Assert.IsTrue(interactor.TryPickUp(largeBox.GetComponent<Cargo>()),
+                "대형 박스를 집을 수 없다");
+            interactor.DropHeldCargo();
+        }
+
+        [UnityTest]
         public IEnumerator 원통_화물도_집을_수_있다()
         {
             yield return SceneManager.LoadSceneAsync(

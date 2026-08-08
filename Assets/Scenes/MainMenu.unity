@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &586339952
+--- !u!1 &288464545
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,10 +127,10 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 586339956}
-  - component: {fileID: 586339955}
-  - component: {fileID: 586339954}
-  - component: {fileID: 586339953}
+  - component: {fileID: 288464549}
+  - component: {fileID: 288464548}
+  - component: {fileID: 288464547}
+  - component: {fileID: 288464546}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -138,18 +138,18 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!328 &586339953
+--- !u!328 &288464546
 VideoPlayer:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 586339952}
+  m_GameObject: {fileID: 288464545}
   m_Enabled: 1
   m_VideoClip: {fileID: 32900000, guid: eb1b41a2d0eb0420cb00d3f0ea851066, type: 3}
   m_TargetCameraAlpha: 1
   m_TargetCamera3DLayout: 0
-  m_TargetCamera: {fileID: 586339955}
+  m_TargetCamera: {fileID: 288464548}
   m_TargetTexture: {fileID: 0}
   m_TimeReference: 0
   m_TargetMaterialRenderer: {fileID: 0}
@@ -172,21 +172,21 @@ VideoPlayer:
   m_WaitForFirstFrame: 1
   m_FrameReadyEventEnabled: 0
   m_VideoShaders: []
---- !u!81 &586339954
+--- !u!81 &288464547
 AudioListener:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 586339952}
+  m_GameObject: {fileID: 288464545}
   m_Enabled: 1
---- !u!20 &586339955
+--- !u!20 &288464548
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 586339952}
+  m_GameObject: {fileID: 288464545}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -231,13 +231,13 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!4 &586339956
+--- !u!4 &288464549
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 586339952}
+  m_GameObject: {fileID: 288464545}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -246,7 +246,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &1064502204
+--- !u!1 &1896540907
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -254,8 +254,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1064502206}
-  - component: {fileID: 1064502205}
+  - component: {fileID: 1896540909}
+  - component: {fileID: 1896540908}
   m_Layer: 0
   m_Name: MainMenu
   m_TagString: Untagged
@@ -263,13 +263,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1064502205
+--- !u!114 &1896540908
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1064502204}
+  m_GameObject: {fileID: 1896540907}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 29edba0e224345d087128c718f6a5ff6, type: 3}
@@ -279,16 +279,17 @@ MonoBehaviour:
   - {fileID: 11400000, guid: 6b365848807c46068d3b13d3782812a0, type: 2}
   - {fileID: 11400000, guid: b22490b2317640a39bdc4f4e5f59883e, type: 2}
   - {fileID: 11400000, guid: 3a5d7f9b1c2e4f6087a9b0c1d2e3f456, type: 2}
+  - {fileID: 11400000, guid: b7c3d9e15f2846a0bc2d4e6f8091a357, type: 2}
   titleFont: {fileID: 12800000, guid: 0f54b8e28126247e7a5f78704148aa7c, type: 3}
   bodyFont: {fileID: 12800000, guid: 1a577b64924284801b0c293b695097c2, type: 3}
   overlayOpacity: 0.55
---- !u!4 &1064502206
+--- !u!4 &1896540909
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1064502204}
+  m_GameObject: {fileID: 1896540907}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -301,5 +302,5 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 586339956}
-  - {fileID: 1064502206}
+  - {fileID: 288464549}
+  - {fileID: 1896540909}

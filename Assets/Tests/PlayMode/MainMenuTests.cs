@@ -19,10 +19,11 @@ namespace CargoStack.Tests
                 Object.FindAnyObjectByType<MainMenuController>();
 
             Assert.NotNull(menu, "MainMenuController가 없다");
-            Assert.AreEqual(3, menu.StageCount);
+            Assert.AreEqual(4, menu.StageCount);
             Assert.AreEqual("stage-01", menu.GetStage(0).StageId);
             Assert.AreEqual("stage-02", menu.GetStage(1).StageId);
             Assert.AreEqual("stage-03", menu.GetStage(2).StageId);
+            Assert.AreEqual("stage-04", menu.GetStage(3).StageId);
             Assert.IsFalse(menu.GetStage(0).StageId == "prototype");
         }
 

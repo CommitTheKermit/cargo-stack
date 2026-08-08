@@ -10,7 +10,7 @@ namespace CargoStack.Tests
     public class MapBoundaryTests
     {
         [UnityTest]
-        public IEnumerator 네_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
+        public IEnumerator 다섯_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
         {
             string[] sceneNames =
             {
@@ -18,6 +18,7 @@ namespace CargoStack.Tests
                 "Stage01_Tutorial",
                 "Stage02_SpeedBumps",
                 "Stage03_HillsAndPits",
+                "Stage04_ComplexRoute",
             };
 
             foreach (string sceneName in sceneNames)
@@ -49,7 +50,8 @@ namespace CargoStack.Tests
 
             int middle = route.SampleCount / 2;
             int last = route.SampleCount - 1;
-            Vector3 middlePoint = route.SampleAt(middle);
+            Vector3 middlePoint =
+                (route.SampleAt(middle) + route.SampleAt(middle + 1)) * 0.5f;
             Vector3 startPoint = route.SampleAt(0);
             Vector3 endPoint = route.SampleAt(last);
             Transform leftWall = boundary.transform.Find($"Boundary_Left_{middle:000}");
@@ -70,12 +72,12 @@ namespace CargoStack.Tests
                     "왼쪽",
                     leftWall,
                     middlePoint,
-                    PlanarDirection(middlePoint, leftWall.position)),
+                    -leftWall.right),
                 new BoundaryPushCase(
                     "오른쪽",
                     rightWall,
                     middlePoint,
-                    PlanarDirection(middlePoint, rightWall.position)),
+                    rightWall.right),
                 new BoundaryPushCase("시작", startWall, startPoint, -startHeading),
                 new BoundaryPushCase("끝", endWall, endPoint, endHeading),
             };
@@ -102,9 +104,12 @@ namespace CargoStack.Tests
         {
             foreach (Cargo candidate in Object.FindObjectsByType<Cargo>(FindObjectsSortMode.None))
             {
-                if (candidate.GetComponent<BoxCollider>() != null)
+                foreach (Transform child in candidate.transform)
                 {
-                    return candidate;
+                    if (child.name == "ImportedVisual_CardboardBox")
+                    {
+                        return candidate;
+                    }
                 }
             }
 
