@@ -163,6 +163,35 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 로프는_Meshy_재질을_시각으로_쓴다()
+        {
+            Rope rope = Rope.Create(WallTop(BedMinZ), WallTop(BedMaxZ), settings, null);
+            Assert.NotNull(rope, "로프를 걸지 못했다");
+
+            MeshFilter meshFilter = rope.GetComponent<MeshFilter>();
+            MeshRenderer meshRenderer = rope.GetComponent<MeshRenderer>();
+
+            Assert.NotNull(meshFilter, "Meshy 로프 시각 메시가 없다");
+            Assert.NotNull(meshFilter.sharedMesh, "Meshy 로프 시각 메시가 비어 있다");
+            Assert.That(meshFilter.sharedMesh.vertexCount, Is.GreaterThan(0),
+                "Meshy 로프 시각 메시 정점이 없다");
+            Assert.That(meshFilter.sharedMesh.vertexCount, Is.GreaterThan(rope.SegmentCount * 16),
+                "Meshy 로프 시각 메시가 물리 마디만 따라가는 성긴 단일 표면이다");
+            Assert.NotNull(meshRenderer, "Meshy 로프 시각 렌더러가 없다");
+            Assert.NotNull(meshRenderer.sharedMaterial, "Meshy 로프 시각 머티리얼이 없다");
+            string baseTextureProperty = meshRenderer.sharedMaterial.HasProperty("_BaseMap")
+                ? "_BaseMap"
+                : "_MainTex";
+            Assert.NotNull(meshRenderer.sharedMaterial.GetTexture(baseTextureProperty),
+                "제공된 Meshy 로프의 기본 색상 텍스처가 적용되지 않았다");
+            Assert.IsNull(rope.GetComponent<LineRenderer>(),
+                "기존 LineRenderer가 Meshy 로프 메시와 함께 남아 있다");
+
+            rope.Remove();
+            yield return null;
+        }
+
+        [UnityTest]
         public IEnumerator 너무_먼_두_점은_한_가닥으로_잇지_못한다()
         {
             RopeAttachment near = RopeAttachment.At(truckBody, truck.transform.TransformPoint(Vector3.zero));

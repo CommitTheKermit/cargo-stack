@@ -12,9 +12,13 @@ namespace CargoStack.EditorTools
     /// 씬은 손으로 고치지 않고 <see cref="PrototypeSceneBuilder"/> 가 다시 만든다는 원칙(AGENTS.md 3장)을
     /// 그대로 따른다. 그래서 환경도 씬에 손으로 심지 않고 여기서 재생성한다.
     ///
-    /// 나무·바위 모델은 Broken Vector 의 "Low Poly Tree Pack" / "Low Poly Rock Pack" 을 쓴다
-    /// (Assets/Environment/LowPoly*Pack). itch.io 무료판은 .dae 모델과 공용 컬러시트 텍스처로 오므로,
-    /// 프리팹 대신 임포트된 모델(GameObject)을 바로 인스턴스화하고 컬러시트 재질을 입힌다.
+    /// 기본 스테이지는 Broken Vector 의 "Low Poly Tree Pack" / "Low Poly Rock Pack" 을 쓴다
+    /// (Assets/Environment/LowPoly*Pack). 겨울 스테이지는 이 경로를 사용하지 않는다.
+    /// 겨울에는 사용자가 지정한 MochiModels 의 "3D Low Poly Environment Assets" 패키지 안
+    /// IcePrefabs 를 명시적으로 로드한다. 패키지에 없는 대체 나무·바위로 조용히 폴백하지 않아야
+    /// 씬에서 Asset Store 미리보기와 다른 환경이 만들어지는 일을 막을 수 있다.
+    /// 기본 팩은 .dae 모델과 공용 컬러시트 텍스처로 오므로, 프리팹 대신 임포트된 모델(GameObject)을
+    /// 바로 인스턴스화하고 컬러시트 재질을 입힌다.
     /// 팩마다 모델 이름이 제각각이라(Tree Type1 01, Rock Type3 02 …) 이름으로는 못 잡는다. 대신
     /// 임포트되는 <b>팩 폴더 경로</b>에 "tree" / "rock" 이 들어간다는 점을 이용해 폴더 기준으로 모은다.
     /// 폴더명이 예상과 다르면 <see cref="TreeFolderKeyword"/> / <see cref="RockFolderKeyword"/> 만 고치면 된다.
@@ -41,12 +45,19 @@ namespace CargoStack.EditorTools
         private const string TreeFolderKeyword = "tree";
         private const string RockFolderKeyword = "rock";
 
+        // Asset Store 패키지의 실제 폴더명에는 게시자가 입력한 오타(Enivronment)가 포함되어 있다.
+        // 이름을 임의로 고치지 않고, 임포트된 패키지의 원래 경로를 그대로 참조한다.
+        private const string WinterAssetFolder =
+            "Assets/3D Enivronment Assets/Prefabs/IcePrefabs";
+        private const string WinterAssetRoot = "Assets/3D Enivronment Assets";
+        private const string WinterAssetPrefix = "MochiModels_";
+
         private const string MaterialFolder = "Assets/Environment";
         private const string TreeMaterialPath = MaterialFolder + "/Environment_TreeMaterial.mat";
         private const string RockMaterialPath = MaterialFolder + "/Environment_RockMaterial.mat";
 
-        // 컬러시트가 여러 벌이라 계절/색을 하나 고른다. 없으면 아무거나 첫 번째를 쓴다.
-        private static readonly string[] TreeColorPreference = { "normal" };
+        // 컬러시트가 여러 벌이라 기본 스테이지에서 계절/색을 하나 고른다. 없으면 아무거나 첫 번째를 쓴다.
+        private static readonly string[] DefaultTreeColorPreference = { "normal" };
         private static readonly string[] RockColorPreference = { "grey", "gray" };
 
         // 도로 가장자리에서 이만큼 떨어진 곳부터 심는다. 도로 위나 갓길 적재 공간을 침범하지 않게 한다.
@@ -91,9 +102,30 @@ namespace CargoStack.EditorTools
             float startClearance,
             float groundDrop)
         {
+            return Scatter(route, sceneName, roadHalfWidth, startClearance, groundDrop, false);
+        }
+
+        public static GameObject Scatter(
+            RoutePath route,
+            string sceneName,
+            float roadHalfWidth,
+            float startClearance,
+            float groundDrop,
+            bool winter)
+        {
             if (route == null)
             {
                 throw new ArgumentNullException(nameof(route));
+            }
+
+            if (winter)
+            {
+                return ScatterWinter(
+                    route,
+                    sceneName,
+                    roadHalfWidth,
+                    startClearance,
+                    groundDrop);
             }
 
             GameObject[] trees = DiscoverModels(TreeFolderKeyword);
@@ -109,7 +141,9 @@ namespace CargoStack.EditorTools
             }
 
             Material treeMaterial = EnsureColorsheetMaterial(
-                TreeMaterialPath, TreeFolderKeyword, TreeColorPreference);
+                TreeMaterialPath,
+                TreeFolderKeyword,
+                DefaultTreeColorPreference);
             Material rockMaterial = EnsureColorsheetMaterial(
                 RockMaterialPath, RockFolderKeyword, RockColorPreference);
 
@@ -193,9 +227,217 @@ namespace CargoStack.EditorTools
             // 첫 나무의 크기를 남겨 세워졌는지(높이 y 가 가로/세로보다 큰지) 확인할 수 있게 한다.
             Debug.Log(
                 $"[CargoStack] 환경 배치 완료: 나무 {treeCount}그루, 바위 {rockCount}개 "
-                + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종). "
+                + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종, "
+                + "나무 소스 기본 환경 팩, 계절 기본). "
                 + $"첫 나무 크기(WxHxD) = {firstTreeSize.x:0.0} x {firstTreeSize.y:0.0} x {firstTreeSize.z:0.0} m");
             return environment.gameObject;
+        }
+
+        /// <summary>
+        /// MochiModels의 실제 겨울 프리팹으로 눈밭을 구성한다.
+        ///
+        /// 이 경로에서는 이름 검색이나 다른 환경 팩으로의 폴백을 하지 않는다. Asset Store
+        /// 패키지의 IceTree, IceMountain, IceCave, IceRock, IcePlatform, Snowman을 직접
+        /// 인스턴스화해야 패키지 미리보기와 같은 세계 요소가 씬에 남는다.
+        /// </summary>
+        private static GameObject ScatterWinter(
+            RoutePath route,
+            string sceneName,
+            float roadHalfWidth,
+            float startClearance,
+            float groundDrop)
+        {
+            GameObject iceTree = LoadWinterPrefab("IceTree");
+            GameObject[] iceRocks =
+            {
+                LoadWinterPrefab("IceRock_01"),
+                LoadWinterPrefab("IceRock_02"),
+                LoadWinterPrefab("IceRock_03"),
+            };
+            GameObject[] iceMountains =
+            {
+                LoadWinterPrefab("IceMountain_01"),
+                LoadWinterPrefab("IceMountain_02"),
+                LoadWinterPrefab("IceMountain_03"),
+            };
+            GameObject iceCave = LoadWinterPrefab("IceCave");
+            GameObject[] icePlatforms =
+            {
+                LoadWinterPrefab("IcePlatform_01"),
+                LoadWinterPrefab("IcePlatform_02"),
+            };
+            GameObject[] snowmen =
+            {
+                LoadWinterPrefab("Snowman_01"),
+                LoadWinterPrefab("Snowman_02"),
+            };
+
+            var environment = new GameObject("Environment").transform;
+            Transform landmarkRoot = CreateEnvironmentChild(environment, "IceLandmarks");
+            Transform treeRoot = CreateEnvironmentChild(environment, "Trees");
+            Transform rockRoot = CreateEnvironmentChild(environment, "Rocks");
+            Transform snowmanRoot = CreateEnvironmentChild(environment, "Snowmen");
+            Transform platformRoot = CreateEnvironmentChild(environment, "IcePlatforms");
+
+            var random = new System.Random(StableHash(sceneName + ":MochiModels"));
+            float length = route.TotalLength;
+            int treeCount = 0;
+            int rockCount = 0;
+
+            // 시작 구간에도 실제 IceTree를 배치해 첫 플레이 화면에서 겨울 에셋이 보이게 한다.
+            // 도로에 붙이지 않고 눈 지면 안쪽에 두어 주행 공간과 적재 시야를 비워 둔다.
+            const float TreeSpacing = 11f;
+            for (float distance = startClearance + 4f, index = 0f;
+                distance < length - 6f;
+                distance += TreeSpacing, index++)
+            {
+                Vector3 center = route.PositionAt(distance);
+                Vector3 side = SideDirection(route, distance, length);
+                Vector3 along = TangentDirection(route, distance, length);
+
+                for (int sign = -1; sign <= 1; sign += 2)
+                {
+                    float offset = roadHalfWidth + 6.5f + (float)random.NextDouble() * 4f;
+                    float alongJitter = ((float)random.NextDouble() - 0.5f) * 2.5f;
+                    Vector3 position = center
+                        + side * (sign * offset)
+                        + along * alongJitter;
+                    position.y = center.y - groundDrop;
+
+                    PlaceInstance(
+                        iceTree,
+                        treeRoot,
+                        $"{WinterAssetPrefix}IceTree_{treeCount:000}",
+                        position,
+                        null,
+                        4.8f,
+                        random);
+                    treeCount++;
+
+                    // 바위는 나무 사이에만 놓아 눈밭이 반복되는 띠처럼 보이지 않게 한다.
+                    if (((int)index + sign) % 2 == 0)
+                    {
+                        Vector3 rockPosition = center
+                            + side * (sign * (offset + 2.5f))
+                            + along * (alongJitter + 2.2f);
+                        rockPosition.y = center.y - groundDrop;
+                        GameObject rock = iceRocks[random.Next(iceRocks.Length)];
+                        PlaceInstance(
+                            rock,
+                            rockRoot,
+                            $"{WinterAssetPrefix}IceRock_{rockCount:000}",
+                            rockPosition,
+                            null,
+                            2.4f,
+                            random);
+                        rockCount++;
+                    }
+                }
+            }
+
+            // 패키지 미리보기의 핵심 실루엣인 눈 덮인 얼음 산·동굴을 경로 바깥에 세운다.
+            float[] mountainProgress = { 0.12f, 0.34f, 0.58f, 0.80f, 0.94f };
+            int mountainCount = 0;
+            foreach (float progress in mountainProgress)
+            {
+                float distance = Mathf.Lerp(startClearance + 4f, length - 6f, progress);
+                Vector3 center = route.PositionAt(distance);
+                Vector3 side = SideDirection(route, distance, length);
+                int sign = mountainCount % 2 == 0 ? -1 : 1;
+                Vector3 position = center + side * (sign * (roadHalfWidth + 19f));
+                position.y = center.y - groundDrop;
+                PlaceInstance(
+                    iceMountains[mountainCount % iceMountains.Length],
+                    landmarkRoot,
+                    $"{WinterAssetPrefix}IceMountain_{mountainCount:00}",
+                    position,
+                    null,
+                    15f + (mountainCount % 3) * 2f,
+                    random);
+                mountainCount++;
+            }
+
+            float caveDistance = Mathf.Lerp(startClearance + 4f, length - 6f, 0.47f);
+            Vector3 caveCenter = route.PositionAt(caveDistance);
+            Vector3 caveSide = SideDirection(route, caveDistance, length);
+            caveCenter += caveSide * (roadHalfWidth + 17f);
+            caveCenter.y = route.PositionAt(caveDistance).y - groundDrop;
+            PlaceInstance(
+                iceCave,
+                landmarkRoot,
+                $"{WinterAssetPrefix}IceCave",
+                caveCenter,
+                null,
+                11f,
+                random);
+
+            // 얼음 플랫폼은 산과 산 사이의 낮은 지형에 두어 공식 패키지의 빙하 지형을 보강한다.
+            float[] platformProgress = { 0.27f, 0.72f };
+            for (int index = 0; index < platformProgress.Length; index++)
+            {
+                float distance = Mathf.Lerp(startClearance + 5f, length - 7f, platformProgress[index]);
+                Vector3 center = route.PositionAt(distance);
+                Vector3 side = SideDirection(route, distance, length);
+                int sign = index == 0 ? -1 : 1;
+                Vector3 position = center + side * (sign * (roadHalfWidth + 12f));
+                position.y = center.y - groundDrop;
+                PlaceInstance(
+                    icePlatforms[index],
+                    platformRoot,
+                    $"{WinterAssetPrefix}IcePlatform_{index:00}",
+                    position,
+                    null,
+                    3.8f,
+                    random);
+            }
+
+            // 눈사람은 시작·중간·도착의 눈 지면에 배치해 실제 패키지의 캐릭터 소품도 노출한다.
+            float[] snowmanProgress = { 0.08f, 0.50f, 0.90f };
+            for (int index = 0; index < snowmanProgress.Length; index++)
+            {
+                float distance = Mathf.Lerp(startClearance + 3f, length - 5f, snowmanProgress[index]);
+                Vector3 center = route.PositionAt(distance);
+                Vector3 side = SideDirection(route, distance, length);
+                int sign = index % 2 == 0 ? 1 : -1;
+                Vector3 position = center + side * (sign * (roadHalfWidth + 5.5f));
+                position.y = center.y - groundDrop;
+                PlaceInstance(
+                    snowmen[index % snowmen.Length],
+                    snowmanRoot,
+                    $"{WinterAssetPrefix}Snowman_{index:00}",
+                    position,
+                    null,
+                    2.1f,
+                    random);
+            }
+
+            Debug.Log(
+                $"[CargoStack] 겨울 환경 배치 완료: MochiModels 실제 프리팹 사용 "
+                + $"(IceTree {treeCount}개, IceRock {rockCount}개, "
+                + $"IceMountain {mountainCount}개, IceCave 1개, "
+                + $"IcePlatform {platformProgress.Length}개, Snowman {snowmanProgress.Length}개)");
+            return environment.gameObject;
+        }
+
+        private static Transform CreateEnvironmentChild(Transform parent, string name)
+        {
+            var child = new GameObject(name).transform;
+            child.SetParent(parent, false);
+            return child;
+        }
+
+        private static GameObject LoadWinterPrefab(string prefabName)
+        {
+            string path = $"{WinterAssetFolder}/{prefabName}.prefab";
+            GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+            if (prefab == null)
+            {
+                throw new InvalidOperationException(
+                    "MochiModels 겨울 에셋을 찾지 못했다: " + path
+                    + ". Unity Asset Store의 '3D Low Poly Environment Assets'를 먼저 임포트해야 한다.");
+            }
+
+            return prefab;
         }
 
         [MenuItem("CargoStack/환경/발견된 나무·바위 모델 로그")]
@@ -253,6 +495,11 @@ namespace CargoStack.EditorTools
 
         private static bool IsExcluded(string path)
         {
+            if (path.StartsWith(WinterAssetRoot, StringComparison.Ordinal))
+            {
+                return true;
+            }
+
             foreach (string folder in ExcludedFolders)
             {
                 if (path.StartsWith(folder, StringComparison.Ordinal))

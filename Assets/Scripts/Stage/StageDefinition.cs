@@ -13,6 +13,7 @@ namespace CargoStack
     {
         [SerializeField] private string stageId = "stage";
         [SerializeField] private string sceneName = "Stage";
+        [SerializeField] private StageTheme theme = StageTheme.Default;
         [SerializeField] private bool showInMenu = true;
         [SerializeField] private string displayName = "새 스테이지";
         [SerializeField, TextArea] private string menuDescription = "";
@@ -29,6 +30,7 @@ namespace CargoStack
 
         public string StageId => stageId;
         public string SceneName => sceneName;
+        public StageTheme Theme => theme;
         public bool ShowInMenu => showInMenu;
         public string DisplayName => displayName;
         public string MenuDescription => menuDescription;
@@ -112,6 +114,12 @@ namespace CargoStack
                 }
             }
         }
+    }
+
+    public enum StageTheme
+    {
+        Default,
+        Winter,
     }
 
     /// <summary>

@@ -33,6 +33,8 @@ namespace CargoStack.EditorTools
         private const string StageFolder = "Assets/Stages";
         private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
         private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
+        private const string IceRoadMaterialPath = MaterialFolder + "/IceRoad.mat";
+        private const string SnowGroundMaterialPath = MaterialFolder + "/SnowGround.mat";
         private const string FontFolder = "Assets/Fonts";
         private const string TitleFontPath = FontFolder + "/Pretendard-Light.ttf";
         private const string BodyFontPath = FontFolder + "/Pretendard-Regular.ttf";
@@ -62,15 +64,24 @@ namespace CargoStack.EditorTools
         private const float CabInteriorForbiddenCenterY = 1.25f;
         private const float CabInteriorForbiddenHeight = 3.5f;
 
+        // 짐칸 앞 격벽의 바로 뒤를 닫아, 낮은 격벽을 넘어온 화물이 캐빈 바닥으로
+        // 떨어지지 않게 하는 물리 전용 벽이다. 렌더러는 만들지 않는다.
+        private const float CabFrontCollisionWallThickness = BedWallThickness;
+        private const float CabFrontCollisionWallWidth = BedFrontBarrierWidth;
+        private const float CabFrontCollisionWallCenterY = CabInteriorForbiddenCenterY;
+        private const float CabFrontCollisionWallHeight = CabInteriorForbiddenHeight;
+
         /// <summary>도로 표면에서 차체 원점까지의 높이. GroundSupport 콜라이더 바닥과 맞춘다.</summary>
         private const float RideHeight = 0.75f;
 
         private const float RoadWidth = 13f;
         private const float RoadThickness = 1.2f;
+        private const float RoadTextureTileSize = 8f;
 
         /// <summary>도로 양옆에 까는 잔디 지면의 절반 폭. 나무·바위가 이 위에 선다.</summary>
         private const float GroundHalfWidth = 38f;
         private const float GroundThickness = 2f;
+        private const float GroundTextureTileSize = 8f;
 
         /// <summary>
         /// 지면을 도로 윗면보다 이만큼만 살짝 낮춘다. 도로/지면 표면이 겹쳐 z-파이팅 나는 것은 막되,
@@ -242,15 +253,26 @@ namespace CargoStack.EditorTools
 
             int groundLayer = EnsureLayer("Ground");
 
-            // 도로는 아스팔트 회색, 지면은 잔디 초록으로 나눠 길과 땅을 구분한다.
-            Material roadMaterial = EnsureColorMaterial("Road", new Color(0.30f, 0.30f, 0.33f));
-            Material grassMaterial = EnsureColorMaterial("Grass", new Color(0.42f, 0.60f, 0.33f));
+            bool isWinter = definition.Theme == StageTheme.Winter;
+
+            // 겨울 스테이지는 얼음 도로와 눈 지면을 사용한다. Asset Store 텍스처가
+            // 프로젝트에 임포트되어 있으면 이름으로 자동 연결하고, 아직 없으면 차가운
+            // 단색 재질을 써서 씬 생성 자체는 막지 않는다.
+            Material roadMaterial = isWinter
+                ? EnsureWinterRoadMaterial()
+                : EnsureColorMaterial("Road", new Color(0.30f, 0.30f, 0.33f));
+            Material groundMaterial = isWinter
+                ? EnsureSnowGroundMaterial()
+                : EnsureColorMaterial("Grass", new Color(0.42f, 0.60f, 0.33f));
             Material truckMaterial = EnsureColorMaterial("Truck", new Color(0.26f, 0.48f, 0.62f));
             Material bedMaterial = EnsureColorMaterial("Bed", new Color(0.47f, 0.5f, 0.52f));
             Material playerMaterial = EnsureColorMaterial("Player", new Color(0.32f, 0.7f, 0.42f));
 
             PhysicsMaterial bedPhysics = EnsurePhysicsMaterial("BedSurface", 0.55f, 0.65f);
             PhysicsMaterial cargoPhysics = EnsurePhysicsMaterial("CargoSurface", 0.45f, 0.55f);
+            PhysicsMaterial roadPhysics = isWinter
+                ? EnsurePhysicsMaterial("IceRoadSurface", 0.02f, 0.02f)
+                : null;
 
             ApplyPhysicsProjectSettings();
 
@@ -265,11 +287,12 @@ namespace CargoStack.EditorTools
             RoutePath route = BuildRoute(
                 groundLayer,
                 roadMaterial,
+                roadPhysics,
                 definition.CopyRouteControlPoints(),
                 definition.SceneName);
 
-            // 도로 아래에 경로 고저를 따라가는 넓은 잔디 지면을 깐다. 나무·바위가 이 위에 선다.
-            BuildGround(route, grassMaterial, groundLayer, definition.SceneName);
+            // 도로 아래에 경로 고저를 따라가는 넓은 지면을 깐다. 겨울에는 눈 지면이다.
+            BuildGround(route, groundMaterial, groundLayer, definition.SceneName);
 
             // 도로 양옆 잔디 위에 나무·바위를 흩뿌린다. 모델이 아직 없으면 조용히 건너뛴다.
             EnvironmentScatter.Scatter(
@@ -277,7 +300,8 @@ namespace CargoStack.EditorTools
                 definition.SceneName,
                 RoadWidth * 0.5f,
                 definition.TruckStartDistance,
-                GroundDropBelowRoad);
+                GroundDropBelowRoad,
+                isWinter);
 
             float goalDistance = route.TotalLength - definition.GoalOffsetFromEnd;
             if (goalDistance <= definition.TruckStartDistance)
@@ -287,7 +311,7 @@ namespace CargoStack.EditorTools
                     + $"출발 거리({definition.TruckStartDistance:0.##}m)보다 뒤에 있지 않다.");
             }
 
-            CreateLighting();
+            CreateLighting(isWinter);
 
             GameObject truck = BuildTruck(
                 truckMaterial,
@@ -415,6 +439,7 @@ namespace CargoStack.EditorTools
         private static RoutePath BuildRoute(
             int layer,
             Material material,
+            PhysicsMaterial physics,
             Vector3[] controlPoints,
             string sceneName)
         {
@@ -453,6 +478,7 @@ namespace CargoStack.EditorTools
 
                 BoxCollider box = block.AddComponent<BoxCollider>();
                 box.size = new Vector3(length * RoadBlockOverlap, RoadThickness, RoadWidth);
+                box.sharedMaterial = physics;
             }
 
             return route;
@@ -467,10 +493,17 @@ namespace CargoStack.EditorTools
         {
             int count = route.SampleCount;
             var vertices = new Vector3[count * 4];
+            var uvs = new Vector2[count * 4];
+            float distance = 0f;
 
             for (int i = 0; i < count; i++)
             {
                 Vector3 point = route.SampleAt(i);
+                if (i > 0)
+                {
+                    distance += Vector3.Distance(route.SampleAt(i - 1), point);
+                }
+
                 Vector3 heading = route.SampleAt(Mathf.Min(i + 1, count - 1))
                     - route.SampleAt(Mathf.Max(i - 1, 0));
                 heading.y = 0f;
@@ -482,6 +515,13 @@ namespace CargoStack.EditorTools
                 vertices[i * 4 + 1] = point + side;          // 오른쪽 모서리
                 vertices[i * 4 + 2] = point - side + skirt;
                 vertices[i * 4 + 3] = point + side + skirt;
+
+                float u = distance / RoadTextureTileSize;
+                float v = RoadWidth / RoadTextureTileSize;
+                uvs[i * 4 + 0] = new Vector2(u, 0f);
+                uvs[i * 4 + 1] = new Vector2(u, v);
+                uvs[i * 4 + 2] = uvs[i * 4 + 0];
+                uvs[i * 4 + 3] = uvs[i * 4 + 1];
             }
 
             var triangles = new List<int>((count - 1) * 18);
@@ -506,6 +546,7 @@ namespace CargoStack.EditorTools
             var mesh = new Mesh { name = $"{sceneName}_RoadSurface" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -524,6 +565,7 @@ namespace CargoStack.EditorTools
             existing.Clear();
             existing.SetVertices(vertices);
             existing.SetTriangles(triangles, 0);
+            existing.SetUVs(0, uvs);
             existing.RecalculateNormals();
             existing.RecalculateBounds();
             EditorUtility.SetDirty(existing);
@@ -675,10 +717,17 @@ namespace CargoStack.EditorTools
         {
             int count = route.SampleCount;
             var vertices = new Vector3[count * 4];
+            var uvs = new Vector2[count * 4];
+            float distance = 0f;
 
             for (int i = 0; i < count; i++)
             {
                 Vector3 point = route.SampleAt(i);
+                if (i > 0)
+                {
+                    distance += Vector3.Distance(route.SampleAt(i - 1), point);
+                }
+
                 Vector3 heading = route.SampleAt(Mathf.Min(i + 1, count - 1))
                     - route.SampleAt(Mathf.Max(i - 1, 0));
                 heading.y = 0f;
@@ -691,6 +740,13 @@ namespace CargoStack.EditorTools
                 vertices[i * 4 + 1] = top + side;
                 vertices[i * 4 + 2] = top - side + skirt;
                 vertices[i * 4 + 3] = top + side + skirt;
+
+                float u = distance / GroundTextureTileSize;
+                float v = (GroundHalfWidth * 2f) / GroundTextureTileSize;
+                uvs[i * 4 + 0] = new Vector2(u, 0f);
+                uvs[i * 4 + 1] = new Vector2(u, v);
+                uvs[i * 4 + 2] = uvs[i * 4 + 0];
+                uvs[i * 4 + 3] = uvs[i * 4 + 1];
             }
 
             var triangles = new List<int>((count - 1) * 18);
@@ -715,6 +771,7 @@ namespace CargoStack.EditorTools
             var mesh = new Mesh { name = $"{sceneName}_Ground" };
             mesh.SetVertices(vertices);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetUVs(0, uvs);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
@@ -732,6 +789,7 @@ namespace CargoStack.EditorTools
             existing.Clear();
             existing.SetVertices(vertices);
             existing.SetTriangles(triangles, 0);
+            existing.SetUVs(0, uvs);
             existing.RecalculateNormals();
             existing.RecalculateBounds();
             EditorUtility.SetDirty(existing);
@@ -762,6 +820,7 @@ namespace CargoStack.EditorTools
             AddPart(truck.transform, "Cab", new Vector3(1.275f, 0.9875f, 0f), new Vector3(2.85f, 2.125f, 2.25f), truckMaterial, bedPhysics, false)
                 .gameObject.AddComponent<CargoPlacementForbiddenVolume>();
             AddCabInteriorPlacementForbiddenVolume(truck.transform);
+            AddCabFrontCollisionWall(truck.transform, bedMaterial, bedPhysics);
 
             float bedLengthWithWalls = BedInsideLength + BedWallThickness * 2f;
             float wallCenterY = BedFloorTop + BedWallHeight * 0.5f;
@@ -1074,6 +1133,27 @@ namespace CargoStack.EditorTools
             // 삼는 실제 배치 경로도 OverlapBox에서만 막고 물리·조준을 바꾸지 않는다.
             collider.isTrigger = true;
             volume.AddComponent<CargoPlacementForbiddenVolume>();
+        }
+
+        private static void AddCabFrontCollisionWall(
+            Transform truck,
+            Material bedMaterial,
+            PhysicsMaterial bedPhysics)
+        {
+            AddPart(
+                truck,
+                "CabFrontCollisionWall",
+                new Vector3(
+                    CabInteriorForbiddenMinX + CabFrontCollisionWallThickness * 0.5f,
+                    CabFrontCollisionWallCenterY,
+                    BedCenterZ),
+                new Vector3(
+                    CabFrontCollisionWallThickness,
+                    CabFrontCollisionWallHeight,
+                    CabFrontCollisionWallWidth),
+                bedMaterial,
+                bedPhysics,
+                false);
         }
 
         /// <summary>
@@ -1410,19 +1490,25 @@ namespace CargoStack.EditorTools
             return camera;
         }
 
-        private static void CreateLighting()
+        private static void CreateLighting(bool winter)
         {
             var holder = new GameObject("Sun");
             Light light = holder.AddComponent<Light>();
             light.type = LightType.Directional;
-            light.intensity = 1.15f;
+            light.intensity = winter ? 1.05f : 1.15f;
             light.shadows = LightShadows.Soft;
             holder.transform.rotation = Quaternion.Euler(48f, -32f, 0f);
 
             RenderSettings.ambientMode = AmbientMode.Trilight;
-            RenderSettings.ambientSkyColor = new Color(0.6f, 0.66f, 0.72f);
-            RenderSettings.ambientEquatorColor = new Color(0.42f, 0.45f, 0.44f);
-            RenderSettings.ambientGroundColor = new Color(0.24f, 0.26f, 0.22f);
+            RenderSettings.ambientSkyColor = winter
+                ? new Color(0.72f, 0.82f, 0.92f)
+                : new Color(0.6f, 0.66f, 0.72f);
+            RenderSettings.ambientEquatorColor = winter
+                ? new Color(0.58f, 0.64f, 0.68f)
+                : new Color(0.42f, 0.45f, 0.44f);
+            RenderSettings.ambientGroundColor = winter
+                ? new Color(0.72f, 0.78f, 0.82f)
+                : new Color(0.24f, 0.26f, 0.22f);
         }
 
         private static void EnsureSceneInBuildSettings(
@@ -1520,6 +1606,155 @@ namespace CargoStack.EditorTools
             material.SetFloat("_Glossiness", 0.1f);
             AssetDatabase.CreateAsset(material, path);
             return material;
+        }
+
+        private static Material EnsureWinterRoadMaterial()
+        {
+            Texture2D albedo = FindWinterTexture("ice", false, "ice_toon_smooth_1");
+            Texture2D normal = FindWinterTexture("ice", true);
+            if (albedo == null)
+            {
+                Debug.LogWarning(
+                    "[CargoStack] 얼음 도로 텍스처를 찾지 못했다. "
+                    + "Asset Store의 4K Tiled Ground Textures (part 1)를 임포트하면 "
+                    + "재생성 시 ice 텍스처를 자동 연결한다.");
+            }
+
+            return EnsureSurfaceMaterial(
+                IceRoadMaterialPath,
+                new Color(0.56f, 0.82f, 0.93f),
+                albedo,
+                normal,
+                0.18f,
+                0.92f);
+        }
+
+        private static Material EnsureSnowGroundMaterial()
+        {
+            Texture2D albedo = FindWinterTexture("snow", false, "snow_solid_1");
+            Texture2D normal = FindWinterTexture("snow", true);
+            if (albedo == null)
+            {
+                Debug.LogWarning(
+                    "[CargoStack] 눈 지면 텍스처를 찾지 못했다. "
+                    + "Asset Store의 4K Tiled Ground Textures (part 1)를 임포트하면 "
+                    + "재생성 시 snow 텍스처를 자동 연결한다.");
+            }
+
+            return EnsureSurfaceMaterial(
+                SnowGroundMaterialPath,
+                new Color(0.91f, 0.96f, 1f),
+                albedo,
+                normal,
+                0f,
+                0.35f);
+        }
+
+        private static Material EnsureSurfaceMaterial(
+            string path,
+            Color color,
+            Texture2D albedo,
+            Texture2D normal,
+            float metallic,
+            float glossiness)
+        {
+            Shader standard = Shader.Find("Standard")
+                ?? throw new InvalidOperationException("겨울 지면 재질에 쓸 Standard 셰이더를 찾지 못했다");
+            Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+            if (material == null)
+            {
+                material = new Material(standard)
+                {
+                    name = Path.GetFileNameWithoutExtension(path),
+                };
+                AssetDatabase.CreateAsset(material, path);
+            }
+
+            material.shader = standard;
+            material.color = color;
+            material.SetTexture("_MainTex", albedo);
+            material.SetFloat("_Metallic", metallic);
+            material.SetFloat("_Glossiness", glossiness);
+            ConfigureNormalMap(normal);
+            material.SetTexture("_BumpMap", normal);
+            if (normal != null)
+            {
+                material.EnableKeyword("_NORMALMAP");
+            }
+            else
+            {
+                material.DisableKeyword("_NORMALMAP");
+            }
+
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static void ConfigureNormalMap(Texture2D texture)
+        {
+            if (texture == null)
+            {
+                return;
+            }
+
+            string path = AssetDatabase.GetAssetPath(texture);
+            if (AssetImporter.GetAtPath(path) is TextureImporter importer
+                && importer.textureType != TextureImporterType.NormalMap)
+            {
+                importer.textureType = TextureImporterType.NormalMap;
+                importer.SaveAndReimport();
+            }
+        }
+
+        private static Texture2D FindWinterTexture(
+            string keyword,
+            bool normalMap,
+            string preferredFileName = null)
+        {
+            string[] guids = AssetDatabase.FindAssets("t:Texture2D");
+            Texture2D fallback = null;
+            foreach (string guid in guids)
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string lower = path.ToLowerInvariant();
+                if (!lower.Contains(keyword))
+                {
+                    continue;
+                }
+
+                bool looksNormal = lower.Contains("normal")
+                    || lower.Contains("bump")
+                    || lower.Contains("height");
+                if (normalMap != looksNormal)
+                {
+                    continue;
+                }
+
+                Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                if (!string.IsNullOrEmpty(preferredFileName)
+                    && Path.GetFileNameWithoutExtension(lower).Contains(preferredFileName))
+                {
+                    return texture;
+                }
+
+                if (fallback == null)
+                {
+                    fallback = texture;
+                }
+
+                // The linked 4K ground pack is preferred when it has already been imported.
+                if (lower.Contains("4k") || lower.Contains("tiled ground"))
+                {
+                    return texture;
+                }
+            }
+
+            return fallback;
         }
 
         private static PhysicsMaterial EnsurePhysicsMaterial(string name, float dynamicFriction, float staticFriction)

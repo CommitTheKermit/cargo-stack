@@ -31,9 +31,37 @@ namespace CargoStack
         private readonly List<Rigidbody> segments = new List<Rigidbody>();
         private RopeAttachment start;
         private RopeAttachment end;
-        private LineRenderer line;
-        private Material lineMaterial;
+        private MeshFilter visualMeshFilter;
+        private MeshRenderer visualRenderer;
+        private Mesh visualMesh;
+        private Material visualMaterial;
         private PhysicsMaterial surfaceMaterial;
+        private float visualRadius;
+
+        // The supplied Meshy model is a coiled rope pile rather than a straight
+        // deformable strand. Its actual base-colour, normal, and roughness maps
+        // are therefore applied to a three-strand runtime surface that can still
+        // follow the physical chain. A 0.05 m curve resolution prevents the
+        // strand surface from collapsing into ribbon-like triangles.
+        private const int VisualCrossSectionRows = 8;
+        private const int VisualStrandCount = 3;
+        private const float VisualStrandOrbitRatio = 0.52f;
+        private const float VisualStrandRadiusRatio = 0.46f;
+        private const float VisualSampleSpacing = 0.05f;
+        private const int MaximumVisualPointCount = 512;
+        private const float VisualTwistDegreesPerUnit = 500f;
+        private const string VisualBaseColorResource = "Rope/MeshyRope_BaseColor";
+        private const string VisualNormalResource = "Rope/MeshyRope_Normal";
+        private const string VisualMetallicSmoothnessResource = "Rope/MeshyRope_MetallicSmoothness";
+
+        private Vector3[] visualControlPoints;
+        private float[] visualControlDistances;
+        private Vector3[] visualPathPoints;
+        private Vector3[] visualVertices;
+        private Vector2[] visualUvs;
+        private int[] visualTriangles;
+        private int visualControlPointCount;
+        private int visualPointCount;
 
         public int SegmentCount => segments.Count;
 
@@ -247,7 +275,7 @@ namespace CargoStack
 
             ConnectSegments(knots);
             IgnoreInternalCollisions(ignoredColliders);
-            CreateLine(settings);
+            CreateMeshyRopeVisual(settings);
         }
 
         /// <summary>꺾임점만 있는 선을 세그먼트 경계점으로 잘게 나눈다.</summary>
@@ -418,63 +446,397 @@ namespace CargoStack
             }
         }
 
-        private void CreateLine(RopeSettings settings)
+        private void CreateMeshyRopeVisual(RopeSettings settings)
         {
-            line = gameObject.AddComponent<LineRenderer>();
-            line.useWorldSpace = true;
-            line.positionCount = segments.Count + 1;
-            line.startWidth = settings.Radius * 2f;
-            line.endWidth = settings.Radius * 2f;
-            line.numCapVertices = 4;
-            line.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            visualRadius = settings.Radius;
+            visualControlPointCount = segments.Count + 2;
+            visualControlPoints = new Vector3[visualControlPointCount];
+            visualControlDistances = new float[visualControlPointCount];
+            float initialPathLength = RefreshVisualControlPoints();
+            visualPointCount = Mathf.Clamp(
+                Mathf.CeilToInt(initialPathLength / VisualSampleSpacing) + 1,
+                2,
+                MaximumVisualPointCount);
+            visualPathPoints = new Vector3[visualPointCount];
 
-            Shader shader = Shader.Find("Unlit/Color");
-            if (shader == null)
+            int ringVertexCount = visualPointCount * VisualCrossSectionRows * VisualStrandCount;
+            visualVertices = new Vector3[ringVertexCount + VisualStrandCount * 2];
+            visualUvs = new Vector2[visualVertices.Length];
+            visualTriangles = BuildVisualTriangles(visualPointCount);
+
+            for (int pointIndex = 0; pointIndex < visualPointCount; pointIndex++)
             {
-                shader = Shader.Find("Sprites/Default");
+                float u = visualPointCount <= 1
+                    ? 0f
+                    : pointIndex / (float)(visualPointCount - 1);
+                for (int strand = 0; strand < VisualStrandCount; strand++)
+                {
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        int vertexIndex = GetVisualVertexIndex(pointIndex, strand, row);
+                        visualUvs[vertexIndex] = new Vector2(
+                            u,
+                            row / (float)VisualCrossSectionRows);
+                    }
+                }
             }
 
-            lineMaterial = new Material(shader)
+            for (int strand = 0; strand < VisualStrandCount; strand++)
             {
-                name = "RopeMaterial",
-                color = settings.Color,
+                visualUvs[GetVisualStartCapIndex(visualPointCount, strand)] = new Vector2(0f, 0.5f);
+                visualUvs[GetVisualEndCapIndex(visualPointCount, strand)] = new Vector2(1f, 0.5f);
+            }
+
+            visualMeshFilter = gameObject.AddComponent<MeshFilter>();
+            visualRenderer = gameObject.AddComponent<MeshRenderer>();
+            visualMesh = new Mesh
+            {
+                name = "MeshyRopeVisualMesh",
             };
-            line.sharedMaterial = lineMaterial;
-            RedrawLine();
+            visualMesh.MarkDynamic();
+            visualMesh.vertices = visualVertices;
+            visualMesh.uv = visualUvs;
+            visualMesh.triangles = visualTriangles;
+            visualMeshFilter.sharedMesh = visualMesh;
+
+            Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+            if (shader == null)
+            {
+                shader = Shader.Find("Standard");
+            }
+
+            if (shader == null)
+            {
+                shader = Shader.Find("Unlit/Color");
+            }
+
+            visualMaterial = new Material(shader)
+            {
+                name = "MeshyRopeVisualMaterial",
+                color = Color.white,
+            };
+            if (visualMaterial.HasProperty("_BaseColor"))
+            {
+                visualMaterial.SetColor("_BaseColor", Color.white);
+            }
+
+            if (visualMaterial.HasProperty("_Color"))
+            {
+                visualMaterial.SetColor("_Color", Color.white);
+            }
+
+            ApplyMeshyTextures();
+
+            if (visualMaterial.HasProperty("_Metallic"))
+            {
+                visualMaterial.SetFloat("_Metallic", 0f);
+            }
+
+            if (visualMaterial.HasProperty("_Smoothness"))
+            {
+                visualMaterial.SetFloat("_Smoothness", 1f);
+            }
+
+            visualRenderer.sharedMaterial = visualMaterial;
+            visualRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
+            visualRenderer.receiveShadows = true;
+            RedrawVisual();
+        }
+
+        private void ApplyMeshyTextures()
+        {
+            Texture2D baseColor = Resources.Load<Texture2D>(VisualBaseColorResource);
+            Texture2D normal = Resources.Load<Texture2D>(VisualNormalResource);
+            Texture2D metallicSmoothness = Resources.Load<Texture2D>(VisualMetallicSmoothnessResource);
+
+            SetMaterialTexture("_BaseMap", baseColor);
+            SetMaterialTexture("_MainTex", baseColor);
+
+            if (normal != null && visualMaterial.HasProperty("_BumpMap"))
+            {
+                visualMaterial.SetTexture("_BumpMap", normal);
+                if (visualMaterial.HasProperty("_BumpScale"))
+                {
+                    visualMaterial.SetFloat("_BumpScale", 0.7f);
+                }
+                visualMaterial.EnableKeyword("_NORMALMAP");
+            }
+
+            if (metallicSmoothness != null && visualMaterial.HasProperty("_MetallicGlossMap"))
+            {
+                visualMaterial.SetTexture("_MetallicGlossMap", metallicSmoothness);
+                visualMaterial.EnableKeyword("_METALLICSPECGLOSSMAP");
+            }
+        }
+
+        private void SetMaterialTexture(string propertyName, Texture texture)
+        {
+            if (texture != null && visualMaterial.HasProperty(propertyName))
+            {
+                visualMaterial.SetTexture(propertyName, texture);
+            }
         }
 
         private void LateUpdate()
         {
-            RedrawLine();
+            RedrawVisual();
         }
 
-        private void RedrawLine()
+        private int[] BuildVisualTriangles(int pointCount)
         {
-            if (line == null || segments.Count == 0)
+            int quadTriangleCount = (pointCount - 1) * VisualCrossSectionRows * VisualStrandCount * 2;
+            int capTriangleCount = VisualCrossSectionRows * VisualStrandCount * 2;
+            var triangles = new int[(quadTriangleCount + capTriangleCount) * 3];
+            int writeIndex = 0;
+
+            for (int strand = 0; strand < VisualStrandCount; strand++)
+            {
+                for (int pointIndex = 0; pointIndex < pointCount - 1; pointIndex++)
+                {
+                    int currentRing = GetVisualVertexIndex(pointIndex, strand, 0);
+                    int nextRing = GetVisualVertexIndex(pointIndex + 1, strand, 0);
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        int nextRow = (row + 1) % VisualCrossSectionRows;
+                        AddTriangle(
+                            triangles,
+                            ref writeIndex,
+                            currentRing + row,
+                            nextRing + row,
+                            nextRing + nextRow);
+                        AddTriangle(
+                            triangles,
+                            ref writeIndex,
+                            currentRing + row,
+                            nextRing + nextRow,
+                            currentRing + nextRow);
+                    }
+                }
+
+                int startCap = GetVisualStartCapIndex(pointCount, strand);
+                int endCap = GetVisualEndCapIndex(pointCount, strand);
+                int lastRing = GetVisualVertexIndex(pointCount - 1, strand, 0);
+                for (int row = 0; row < VisualCrossSectionRows; row++)
+                {
+                    int nextRow = (row + 1) % VisualCrossSectionRows;
+                    AddTriangle(
+                        triangles,
+                        ref writeIndex,
+                        startCap,
+                        nextRow + GetVisualVertexIndex(0, strand, 0),
+                        row + GetVisualVertexIndex(0, strand, 0));
+                    AddTriangle(
+                        triangles,
+                        ref writeIndex,
+                        endCap,
+                        lastRing + row,
+                        lastRing + nextRow);
+                }
+            }
+
+            return triangles;
+        }
+
+        private static int GetVisualVertexIndex(int pointIndex, int strand, int row)
+        {
+            return ((pointIndex * VisualStrandCount) + strand) * VisualCrossSectionRows + row;
+        }
+
+        private static int GetVisualStartCapIndex(int pointCount, int strand)
+        {
+            return pointCount * VisualStrandCount * VisualCrossSectionRows + strand * 2;
+        }
+
+        private static int GetVisualEndCapIndex(int pointCount, int strand)
+        {
+            return GetVisualStartCapIndex(pointCount, strand) + 1;
+        }
+
+        private static void AddTriangle(int[] triangles, ref int writeIndex, int first, int second, int third)
+        {
+            triangles[writeIndex++] = first;
+            triangles[writeIndex++] = second;
+            triangles[writeIndex++] = third;
+        }
+
+        private void RedrawVisual()
+        {
+            if (visualMesh == null || segments.Count == 0)
             {
                 return;
             }
 
-            line.SetPosition(0, start.WorldPoint);
-            for (int index = 0; index < segments.Count - 1; index++)
+            float totalDistance = RefreshVisualControlPoints();
+            if (totalDistance < Mathf.Epsilon)
             {
-                // 이웃한 두 마디가 만나는 자리가 곧 매듭이다.
-                //
-                // Rigidbody.position 이 아니라 transform.position 을 읽는다. 앞의 것은 마지막 물리
-                // 스텝의 위치라 50Hz 로 계단처럼 튀고, 화면은 그보다 자주 그려지므로 로프가 떨려
-                // 보인다. 마디에 켜 둔 보간의 결과는 transform 에만 반영된다.
-                line.SetPosition(
-                    index + 1,
-                    (segments[index].transform.position + segments[index + 1].transform.position) * 0.5f);
+                return;
             }
 
-            line.SetPosition(segments.Count, end.WorldPoint);
+            for (int pointIndex = 0; pointIndex < visualPointCount; pointIndex++)
+            {
+                float ratio = pointIndex / (float)(visualPointCount - 1);
+                visualPathPoints[pointIndex] = SampleVisualPath(totalDistance * ratio);
+            }
+
+            Vector3 previousPoint = visualPathPoints[0];
+            Vector3 tangent = GetVisualTangent(0);
+            Vector3 normal = ChooseVisualNormal(tangent);
+            float distance = 0f;
+
+            for (int pointIndex = 0; pointIndex < visualPointCount; pointIndex++)
+            {
+                Vector3 point = visualPathPoints[pointIndex];
+                if (pointIndex > 0)
+                {
+                    Vector3 nextTangent = GetVisualTangent(pointIndex);
+                    Quaternion transport = Quaternion.FromToRotation(tangent, nextTangent);
+                    normal = transport * normal;
+                    normal = Vector3.ProjectOnPlane(normal, nextTangent);
+                    if (normal.sqrMagnitude < 0.000001f)
+                    {
+                        normal = ChooseVisualNormal(nextTangent);
+                    }
+                    else
+                    {
+                        normal.Normalize();
+                    }
+
+                    tangent = nextTangent;
+                    distance += Vector3.Distance(previousPoint, point);
+                    previousPoint = point;
+                }
+
+                Quaternion twist = Quaternion.AngleAxis(
+                    distance * VisualTwistDegreesPerUnit,
+                    tangent);
+                Vector3 twistedNormal = twist * normal;
+                Vector3 binormal = Vector3.Cross(tangent, twistedNormal).normalized;
+                twistedNormal = Vector3.Cross(binormal, tangent).normalized;
+
+                float strandOrbit = visualRadius * VisualStrandOrbitRatio;
+                float strandRadius = visualRadius * VisualStrandRadiusRatio;
+                for (int strand = 0; strand < VisualStrandCount; strand++)
+                {
+                    float strandAngle = strand * Mathf.PI * 2f / VisualStrandCount;
+                    Vector3 strandDirection =
+                        twistedNormal * Mathf.Cos(strandAngle) + binormal * Mathf.Sin(strandAngle);
+                    Vector3 strandBinormal = Vector3.Cross(tangent, strandDirection).normalized;
+                    Vector3 strandCenter = point + strandDirection * strandOrbit;
+
+                    for (int row = 0; row < VisualCrossSectionRows; row++)
+                    {
+                        float angle = row * Mathf.PI * 2f / VisualCrossSectionRows;
+                        Vector3 sectionDirection =
+                            strandDirection * Mathf.Cos(angle) + strandBinormal * Mathf.Sin(angle);
+                        Vector3 offset = strandDirection * strandOrbit + sectionDirection * strandRadius;
+                        int vertexIndex = GetVisualVertexIndex(pointIndex, strand, row);
+                        visualVertices[vertexIndex] = transform.InverseTransformPoint(point + offset);
+                    }
+
+                    if (pointIndex == 0)
+                    {
+                        visualVertices[GetVisualStartCapIndex(visualPointCount, strand)] =
+                            transform.InverseTransformPoint(strandCenter);
+                    }
+                    else if (pointIndex == visualPointCount - 1)
+                    {
+                        visualVertices[GetVisualEndCapIndex(visualPointCount, strand)] =
+                            transform.InverseTransformPoint(strandCenter);
+                    }
+                }
+            }
+
+            visualMesh.vertices = visualVertices;
+            visualMesh.RecalculateNormals();
+            visualMesh.RecalculateBounds();
+        }
+
+        private float RefreshVisualControlPoints()
+        {
+            visualControlPoints[0] = start.WorldPoint;
+            for (int index = 0; index < segments.Count; index++)
+            {
+                visualControlPoints[index + 1] = segments[index].transform.position;
+            }
+            visualControlPoints[visualControlPointCount - 1] = end.WorldPoint;
+
+            visualControlDistances[0] = 0f;
+            float totalDistance = 0f;
+            for (int index = 1; index < visualControlPointCount; index++)
+            {
+                totalDistance += Vector3.Distance(
+                    visualControlPoints[index - 1], visualControlPoints[index]);
+                visualControlDistances[index] = totalDistance;
+            }
+
+            return totalDistance;
+        }
+
+        private Vector3 SampleVisualPath(float distance)
+        {
+            distance = Mathf.Clamp(distance, 0f, visualControlDistances[visualControlPointCount - 1]);
+            for (int index = 1; index < visualControlPointCount; index++)
+            {
+                if (visualControlDistances[index] < distance && index < visualControlPointCount - 1)
+                {
+                    continue;
+                }
+
+                float span = visualControlDistances[index] - visualControlDistances[index - 1];
+                float ratio = span < Mathf.Epsilon
+                    ? 0f
+                    : (distance - visualControlDistances[index - 1]) / span;
+                return Vector3.Lerp(
+                    visualControlPoints[index - 1],
+                    visualControlPoints[index],
+                    Mathf.Clamp01(ratio));
+            }
+
+            return visualControlPoints[visualControlPointCount - 1];
         }
 
         private void OnDestroy()
         {
-            DestroyRuntimeAsset(lineMaterial);
+            DestroyRuntimeAsset(visualMesh);
+            DestroyRuntimeAsset(visualMaterial);
             DestroyRuntimeAsset(surfaceMaterial);
+        }
+
+        private Vector3 GetVisualTangent(int pointIndex)
+        {
+            Vector3 point = visualPathPoints[pointIndex];
+            if (pointIndex == 0)
+            {
+                return SafeVisualDirection(visualPathPoints[1] - point);
+            }
+
+            if (pointIndex == visualPointCount - 1)
+            {
+                return SafeVisualDirection(point - visualPathPoints[pointIndex - 1]);
+            }
+
+            Vector3 previousStep = (point - visualPathPoints[pointIndex - 1]).normalized;
+            Vector3 nextStep = (visualPathPoints[pointIndex + 1] - point).normalized;
+            Vector3 tangent = previousStep + nextStep;
+            if (tangent.sqrMagnitude < 0.000001f)
+            {
+                tangent = nextStep;
+            }
+
+            return SafeVisualDirection(tangent);
+        }
+
+        private static Vector3 SafeVisualDirection(Vector3 direction)
+        {
+            return direction.sqrMagnitude < 0.000001f ? Vector3.forward : direction.normalized;
+        }
+
+        private static Vector3 ChooseVisualNormal(Vector3 tangent)
+        {
+            Vector3 reference = Mathf.Abs(Vector3.Dot(tangent, Vector3.up)) > 0.95f
+                ? Vector3.right
+                : Vector3.up;
+            return Vector3.ProjectOnPlane(reference, tangent).normalized;
         }
 
         private static void DestroyRuntimeAsset(Object asset)
