@@ -28,6 +28,8 @@ namespace CargoStack.EditorTools
         private const string PrototypeAudioFolder = "Assets/Audio/Prototype";
         private const string BlueTruckFolder = VehicleArtFolder + "/BlueTruck";
         private const string BlueTruckMaterialPath = BlueTruckFolder + "/BlueTruckMaterial.mat";
+        private const string BlueTruckCabGlassMeshPath =
+            BlueTruckWheelMeshGenerator.GeneratedFolder + "/BlueTruckCabGlass.asset";
         private const string StageFolder = "Assets/Stages";
         private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
         private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
@@ -860,6 +862,7 @@ namespace CargoStack.EditorTools
                 "BlueTruckBody",
                 BlueTruckWheelMeshGenerator.BodyMeshPath,
                 material);
+            AddCabGlass(visual.transform);
             AddGeneratedMesh(
                 tailgatePivot,
                 "BlueTruckTailgate",
@@ -892,6 +895,51 @@ namespace CargoStack.EditorTools
                 spinRoots,
                 BlueTruckWheelMeshGenerator.WheelRadius,
                 1 << groundLayer);
+        }
+
+        private static void AddCabGlass(Transform parent)
+        {
+            // 차체 프레임 안쪽 네 모서리를 공유해 앞·뒤·양옆의 열린 창을 한 번에 막는다.
+            var vertices = new[]
+            {
+                new Vector3(-0.15f, 0.78f, -0.96f),
+                new Vector3(-0.15f, 0.78f, 0.96f),
+                new Vector3(-0.15f, 1.45f, -0.84f),
+                new Vector3(-0.15f, 1.45f, 0.84f),
+                new Vector3(1.42f, 0.78f, -0.96f),
+                new Vector3(1.42f, 0.78f, 0.96f),
+                new Vector3(0.82f, 1.45f, -0.84f),
+                new Vector3(0.82f, 1.45f, 0.84f),
+            };
+            int[] triangles =
+            {
+                0, 2, 1, 2, 3, 1,
+                4, 5, 6, 6, 5, 7,
+                0, 4, 2, 2, 4, 6,
+                1, 3, 5, 3, 7, 5,
+            };
+            var mesh = new Mesh { name = "BlueTruckCabGlass" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+
+            Mesh existing = AssetDatabase.LoadAssetAtPath<Mesh>(BlueTruckCabGlassMeshPath);
+            if (existing == null)
+            {
+                AssetDatabase.CreateAsset(mesh, BlueTruckCabGlassMeshPath);
+            }
+            else
+            {
+                EditorUtility.CopySerialized(mesh, existing);
+                Object.DestroyImmediate(mesh);
+                mesh = existing;
+            }
+
+            var glass = new GameObject("DriverCabGlass");
+            glass.transform.SetParent(parent, false);
+            glass.AddComponent<MeshFilter>().sharedMesh = mesh;
+            glass.AddComponent<MeshRenderer>().sharedMaterial = EnsureCabGlassMaterial();
         }
 
         private static void AddGeneratedMesh(
@@ -942,6 +990,25 @@ namespace CargoStack.EditorTools
             material.SetFloat("_GlossMapScale", 0.25f);
             material.EnableKeyword("_NORMALMAP");
             material.EnableKeyword("_METALLICGLOSSMAP");
+            EditorUtility.SetDirty(material);
+            return material;
+        }
+
+        private static Material EnsureCabGlassMaterial()
+        {
+            Material material = EnsureColorMaterial(
+                "CabGlass",
+                new Color(0.45f, 0.78f, 0.88f, 0.28f));
+            material.SetOverrideTag("RenderType", "Transparent");
+            material.SetFloat("_Mode", 3f);
+            material.SetInt("_SrcBlend", (int)BlendMode.One);
+            material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+            material.SetInt("_ZWrite", 0);
+            material.SetInt("_Cull", (int)CullMode.Off);
+            material.DisableKeyword("_ALPHATEST_ON");
+            material.DisableKeyword("_ALPHABLEND_ON");
+            material.EnableKeyword("_ALPHAPREMULTIPLY_ON");
+            material.renderQueue = (int)RenderQueue.Transparent;
             EditorUtility.SetDirty(material);
             return material;
         }

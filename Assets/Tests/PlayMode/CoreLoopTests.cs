@@ -267,8 +267,15 @@ namespace CargoStack.Tests
                 "BlueTruck 시각물에 공유 물리와 겹치는 Rigidbody가 남아 있다");
             Assert.IsEmpty(visual.GetComponentsInChildren<MonoBehaviour>(true),
                 "BlueTruck 시각물에 외부 차량 제어 스크립트가 남아 있다");
+            Transform cabGlass = visual.Find("DriverCabGlass");
+            Assert.NotNull(cabGlass, "운전자석 유리가 없다");
+            Assert.AreEqual(24, cabGlass.GetComponent<MeshFilter>().sharedMesh.triangles.Length,
+                "앞·뒤·양옆 유리 네 면이어야 한다");
+            Assert.That(cabGlass.GetComponent<MeshRenderer>().sharedMaterial.color.a, Is.LessThan(1f),
+                "운전자석 유리는 투명해야 한다");
             var meshFilters = new List<MeshFilter>(
                 visual.GetComponentsInChildren<MeshFilter>(true));
+            meshFilters.Remove(cabGlass.GetComponent<MeshFilter>());
             meshFilters.Add(
                 tailgate.transform.Find("BlueTruckTailgate").GetComponent<MeshFilter>());
             Assert.AreEqual(6, meshFilters.Count, "차체, 테일게이트와 실제 바퀴 네 개 이외의 메시가 남아 있다");
