@@ -10,7 +10,7 @@ namespace CargoStack.Tests
     public class MapBoundaryTests
     {
         [UnityTest]
-        public IEnumerator 다섯_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
+        public IEnumerator 여섯_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
         {
             string[] sceneNames =
             {
@@ -19,6 +19,7 @@ namespace CargoStack.Tests
                 "Stage02_SpeedBumps",
                 "Stage03_HillsAndPits",
                 "Stage04_ComplexRoute",
+                "Stage05_Winter",
             };
 
             foreach (string sceneName in sceneNames)

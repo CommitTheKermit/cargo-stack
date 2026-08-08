@@ -23,4 +23,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Stage04_ComplexRoute.unity
     guid: 5b95e370b7180954ca0c28f6c5654978
+  - enabled: 1
+    path: Assets/Scenes/Stage05_Winter.unity
+    guid: 53e1102dcc9754974a5ca11013f494d1
   m_configObjects: {}

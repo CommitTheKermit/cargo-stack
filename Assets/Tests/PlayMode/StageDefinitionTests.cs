@@ -277,6 +277,55 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 다섯번째_스테이지는_얼음_도로와_눈_지면을_사용한다()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "Stage05_Winter",
+                LoadSceneMode.Single);
+
+            StageContext context = Object.FindAnyObjectByType<StageContext>();
+            RoutePath route = Object.FindAnyObjectByType<RoutePath>();
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>();
+            GameObject roadSurface = GameObject.Find("RoadSurface");
+            GameObject groundSurface = GameObject.Find("GroundSurface");
+            BoxCollider roadCollider = GameObject.Find("Road_000")?.GetComponent<BoxCollider>();
+            GameObject environment = GameObject.Find("Environment");
+
+            Assert.NotNull(context, "겨울 스테이지의 StageContext가 없다");
+            Assert.NotNull(context.Definition, "겨울 스테이지 정의가 연결되지 않았다");
+            Assert.AreEqual("stage-winter", context.Definition.StageId);
+            Assert.AreEqual(StageTheme.Winter, context.Definition.Theme);
+            Assert.AreEqual("Stage05_Winter", SceneManager.GetActiveScene().name);
+            Assert.NotNull(route, "겨울 경로가 생성되지 않았다");
+            Assert.That(route.TotalLength, Is.GreaterThan(190f));
+            Assert.AreEqual(8, cargo.Length, "겨울 스테이지 화물 구성이 달라졌다");
+
+            Assert.NotNull(roadSurface, "얼음 도로 표면이 없다");
+            Material roadMaterial = roadSurface.GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.NotNull(roadMaterial, "얼음 도로 재질이 없다");
+            Assert.AreEqual("IceRoad", roadMaterial.name);
+            Assert.That(roadMaterial.GetFloat("_Glossiness"), Is.GreaterThan(0.8f));
+            Assert.NotNull(roadCollider, "얼음 도로 물리 표면이 없다");
+            Assert.NotNull(roadCollider.sharedMaterial, "얼음 도로 저마찰 재질이 연결되지 않았다");
+            Assert.That(roadCollider.sharedMaterial.dynamicFriction, Is.LessThan(0.1f));
+            Assert.That(roadCollider.sharedMaterial.staticFriction, Is.LessThan(0.1f));
+
+            Assert.NotNull(groundSurface, "눈 지면 표면이 없다");
+            Material groundMaterial = groundSurface.GetComponent<MeshRenderer>().sharedMaterial;
+            Assert.NotNull(groundMaterial, "눈 지면 재질이 없다");
+            Assert.AreEqual("SnowGround", groundMaterial.name);
+            Assert.NotNull(environment, "겨울 환경 배치가 없다");
+            Assert.That(
+                environment.GetComponentsInChildren<Renderer>(true).Length,
+                Is.GreaterThan(0),
+                "겨울 월드에 눈 숲·바위 시각물이 없다");
+
+            Debug.Log(
+                $"[CargoStack] Stage05 겨울 경로: 길이 {route.TotalLength:0.0}m, "
+                + $"화물 {cargo.Length}개, 얼음 마찰 {roadCollider.sharedMaterial.dynamicFriction:0.00}");
+        }
+
+        [UnityTest]
         public IEnumerator 원통_화물도_집을_수_있다()
         {
             yield return SceneManager.LoadSceneAsync(

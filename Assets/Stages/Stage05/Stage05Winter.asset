@@ -1,0 +1,117 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c7e3908bdb114069b71f4d524b84618e, type: 3}
+  m_Name: Stage05Winter
+  m_EditorClassIdentifier: CargoStack::CargoStack.StageDefinition
+  stageId: stage-winter
+  sceneName: Stage05_Winter
+  theme: 1
+  showInMenu: 1
+  displayName: Stage 05 · 얼음 길
+  menuDescription: 얼음 도로 · 눈밭 · 미끄러운 겨울 숲
+  routeControlPoints:
+  - {x: 0, y: 0, z: 0}
+  - {x: 18, y: 0, z: 0}
+  - {x: 32, y: 0, z: 4}
+  - {x: 46, y: 1.5, z: 8}
+  - {x: 60, y: 0, z: 12}
+  - {x: 76, y: -2, z: 8}
+  - {x: 92, y: 0, z: 0}
+  - {x: 108, y: 2, z: -5}
+  - {x: 124, y: 0, z: -10}
+  - {x: 140, y: 0, z: -4}
+  - {x: 158, y: 3, z: 2}
+  - {x: 176, y: 0, z: 10}
+  - {x: 194, y: 0, z: 0}
+  truckStartDistance: 8
+  goalOffsetFromEnd: 8
+  maxSpeed: 6
+  speedOverProgress:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0.35
+      inSlope: 4.3333335
+      outSlope: 4.3333335
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.15
+      value: 1
+      inSlope: 4.3333335
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 0.85
+      value: 1
+      inSlope: 0
+      outSlope: -4.3333335
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0.35
+      inSlope: -4.3333335
+      outSlope: -4.3333335
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  cargo:
+  - assetName: CardboardBox
+    maximumSize: {x: 0.95, y: 0.9, z: 0.95}
+    mass: 20
+    colliderShape: 0
+  - assetName: BlueBarrel
+    maximumSize: {x: 0.78, y: 0.95, z: 0.78}
+    mass: 23
+    colliderShape: 1
+  - assetName: CardboardBox
+    maximumSize: {x: 0.85, y: 0.82, z: 0.85}
+    mass: 18
+    colliderShape: 0
+  - assetName: MarbleBust
+    maximumSize: {x: 0.8, y: 1, z: 0.8}
+    mass: 28
+    colliderShape: 0
+    isFragile: 1
+    breakImpactSpeed: 6
+  - assetName: FloorLamp
+    maximumSize: {x: 0.65, y: 1.4, z: 0.65}
+    mass: 14
+    colliderShape: 0
+    isFragile: 1
+    breakImpactSpeed: 4.5
+  - assetName: CardboardBox
+    maximumSize: {x: 0.9, y: 0.85, z: 0.9}
+    mass: 19
+    colliderShape: 0
+  - assetName: BlueBarrel
+    maximumSize: {x: 0.75, y: 0.9, z: 0.75}
+    mass: 20
+    colliderShape: 1
+  - assetName: CardboardBox
+    maximumSize: {x: 0.8, y: 0.8, z: 0.8}
+    mass: 17
+    colliderShape: 0
+  ropeCount: 4

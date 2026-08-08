@@ -43,10 +43,12 @@ namespace CargoStack.EditorTools
 
         private const string MaterialFolder = "Assets/Environment";
         private const string TreeMaterialPath = MaterialFolder + "/Environment_TreeMaterial.mat";
+        private const string WinterTreeMaterialPath = MaterialFolder + "/Environment_WinterTreeMaterial.mat";
         private const string RockMaterialPath = MaterialFolder + "/Environment_RockMaterial.mat";
 
         // 컬러시트가 여러 벌이라 계절/색을 하나 고른다. 없으면 아무거나 첫 번째를 쓴다.
-        private static readonly string[] TreeColorPreference = { "normal" };
+        private static readonly string[] DefaultTreeColorPreference = { "normal" };
+        private static readonly string[] WinterTreeColorPreference = { "cold", "dry", "normal" };
         private static readonly string[] RockColorPreference = { "grey", "gray" };
 
         // 도로 가장자리에서 이만큼 떨어진 곳부터 심는다. 도로 위나 갓길 적재 공간을 침범하지 않게 한다.
@@ -91,6 +93,17 @@ namespace CargoStack.EditorTools
             float startClearance,
             float groundDrop)
         {
+            return Scatter(route, sceneName, roadHalfWidth, startClearance, groundDrop, false);
+        }
+
+        public static GameObject Scatter(
+            RoutePath route,
+            string sceneName,
+            float roadHalfWidth,
+            float startClearance,
+            float groundDrop,
+            bool winter)
+        {
             if (route == null)
             {
                 throw new ArgumentNullException(nameof(route));
@@ -109,7 +122,9 @@ namespace CargoStack.EditorTools
             }
 
             Material treeMaterial = EnsureColorsheetMaterial(
-                TreeMaterialPath, TreeFolderKeyword, TreeColorPreference);
+                winter ? WinterTreeMaterialPath : TreeMaterialPath,
+                TreeFolderKeyword,
+                winter ? WinterTreeColorPreference : DefaultTreeColorPreference);
             Material rockMaterial = EnsureColorsheetMaterial(
                 RockMaterialPath, RockFolderKeyword, RockColorPreference);
 
@@ -193,7 +208,8 @@ namespace CargoStack.EditorTools
             // 첫 나무의 크기를 남겨 세워졌는지(높이 y 가 가로/세로보다 큰지) 확인할 수 있게 한다.
             Debug.Log(
                 $"[CargoStack] 환경 배치 완료: 나무 {treeCount}그루, 바위 {rockCount}개 "
-                + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종). "
+                + $"(나무 모델 {trees.Length}종, 바위 모델 {rocks.Length}종, "
+                + $"계절 {(winter ? "겨울" : "기본")}). "
                 + $"첫 나무 크기(WxHxD) = {firstTreeSize.x:0.0} x {firstTreeSize.y:0.0} x {firstTreeSize.z:0.0} m");
             return environment.gameObject;
         }
