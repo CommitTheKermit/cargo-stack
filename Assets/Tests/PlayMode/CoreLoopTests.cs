@@ -112,6 +112,12 @@ namespace CargoStack.Tests
         [UnityTest]
         public IEnumerator 트럭과_모든_화물에_프로토타입_소리가_배선되어_있다()
         {
+            AudioSource backgroundMusic = GameObject.Find("BackgroundMusic")?.GetComponent<AudioSource>();
+            Assert.NotNull(backgroundMusic, "씬에 배경음악이 없다");
+            Assert.NotNull(backgroundMusic.clip, "배경음악 클립이 배선되지 않았다");
+            Assert.IsTrue(backgroundMusic.loop, "배경음악이 반복 재생되지 않는다");
+            Assert.NotNull(backgroundMusic.GetComponent<BackgroundMusic>(), "배경음악 재생기가 없다");
+
             TruckEngineAudio engineAudio = truck.GetComponent<TruckEngineAudio>();
             Assert.NotNull(engineAudio, "Truck에 엔진 오디오가 없다");
             Assert.IsTrue(engineAudio.HasClip, "엔진 루프 클립이 배선되지 않았다");

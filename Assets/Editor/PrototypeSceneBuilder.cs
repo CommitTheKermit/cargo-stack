@@ -166,6 +166,7 @@ namespace CargoStack.EditorTools
             camera.backgroundColor = Color.black;
             cameraObject.AddComponent<AudioListener>();
             AttachMenuBackgroundVideo(camera);
+            ConfigureBackgroundMusic();
 
             var menuObject = new GameObject("MainMenu");
             var controller = menuObject.AddComponent<MainMenuController>();
@@ -364,6 +365,7 @@ namespace CargoStack.EditorTools
             }
 
             resultScreen.Configure(flow, tracker);
+            ConfigureBackgroundMusic();
 
             EditorSceneManager.SaveScene(scene, scenePath);
             EnsureSceneInBuildSettings(scenePath);
@@ -826,6 +828,18 @@ namespace CargoStack.EditorTools
             truck.AddComponent<TruckEngineAudio>().Configure(engineLoop);
         }
 
+        private static void ConfigureBackgroundMusic()
+        {
+            var music = new GameObject("BackgroundMusic");
+            AudioSource source = music.AddComponent<AudioSource>();
+            source.clip = LoadAudioClip("bgm_playful_loop.ogg");
+            source.loop = true;
+            source.playOnAwake = false;
+            source.spatialBlend = 0f;
+            source.volume = 0.14f;
+            music.AddComponent<BackgroundMusic>();
+        }
+
         private static AudioClip[] LoadPrototypeImpactClips()
         {
             return new[]
@@ -841,8 +855,7 @@ namespace CargoStack.EditorTools
             string path = $"{PrototypeAudioFolder}/{fileName}";
             return AssetDatabase.LoadAssetAtPath<AudioClip>(path)
                 ?? throw new InvalidOperationException(
-                    $"프로토타입 오디오를 찾지 못했다: {path}. "
-                    + "tools/generate_prototype_audio.py를 먼저 실행한다.");
+                    $"프로토타입 오디오를 찾지 못했다: {path}");
         }
 
         private static void AddBlueTruckVisual(
