@@ -310,6 +310,7 @@ namespace CargoStack.EditorTools
                     position.y = center.y - groundDrop;
 
                     PlaceWinterInstance(
+                        route,
                         iceTree,
                         treeRoot,
                         $"{WinterAssetPrefix}IceTree_{treeCount:000}",
@@ -332,6 +333,7 @@ namespace CargoStack.EditorTools
                         rockPosition.y = center.y - groundDrop;
                         GameObject rock = iceRocks[random.Next(iceRocks.Length)];
                         PlaceWinterInstance(
+                            route,
                             rock,
                             rockRoot,
                             $"{WinterAssetPrefix}IceRock_{rockCount:000}",
@@ -360,6 +362,7 @@ namespace CargoStack.EditorTools
                 Vector3 position = center + side * (sign * (roadHalfWidth + 19f));
                 position.y = center.y - groundDrop;
                 PlaceWinterInstance(
+                    route,
                     iceMountains[mountainCount % iceMountains.Length],
                     landmarkRoot,
                     $"{WinterAssetPrefix}IceMountain_{mountainCount:00}",
@@ -381,6 +384,7 @@ namespace CargoStack.EditorTools
             caveCenter += caveSide * (roadHalfWidth + 17f);
             caveCenter.y = caveRouteCenter.y - groundDrop;
             PlaceWinterInstance(
+                route,
                 iceCave,
                 landmarkRoot,
                 $"{WinterAssetPrefix}IceCave",
@@ -405,6 +409,7 @@ namespace CargoStack.EditorTools
                 Vector3 position = center + side * (sign * (roadHalfWidth + 12f));
                 position.y = center.y - groundDrop;
                 PlaceWinterInstance(
+                    route,
                     icePlatforms[index],
                     platformRoot,
                     $"{WinterAssetPrefix}IcePlatform_{index:00}",
@@ -429,6 +434,7 @@ namespace CargoStack.EditorTools
                 Vector3 position = center + side * (sign * (roadHalfWidth + 5.5f));
                 position.y = center.y - groundDrop;
                 PlaceWinterInstance(
+                    route,
                     snowmen[index % snowmen.Length],
                     snowmanRoot,
                     $"{WinterAssetPrefix}Snowman_{index:00}",
@@ -597,6 +603,7 @@ namespace CargoStack.EditorTools
         /// 모양·재질·배치는 그대로 유지한다.
         /// </summary>
         private static Vector3 PlaceWinterInstance(
+            RoutePath route,
             GameObject model,
             Transform parent,
             string name,
@@ -626,6 +633,7 @@ namespace CargoStack.EditorTools
             }
 
             KeepWinterInstanceOffRoad(
+                route,
                 instance,
                 routeCenter,
                 side,
@@ -635,6 +643,7 @@ namespace CargoStack.EditorTools
         }
 
         private static void KeepWinterInstanceOffRoad(
+            RoutePath route,
             GameObject instance,
             Vector3 routeCenter,
             Vector3 side,
@@ -655,6 +664,34 @@ namespace CargoStack.EditorTools
             {
                 instance.transform.position += side
                     * (sideSign * (requiredDistance - signedCenterDistance));
+            }
+
+            // S자 경로에서는 배치 기준점에서 멀어져도 다른 곡선 구간이
+            // 크게 휘어 인스턴스 뒤로 가까이 올 수 있다. 전체 경로를 기준으로
+            // 렌더러 외곽과의 최소 거리를 다시 확인해 곡선 안쪽의 침범을 막는다.
+            const int MaximumPushAttempts = 16;
+            for (int attempt = 0; attempt < MaximumPushAttempts; attempt++)
+            {
+                bounds = GetRendererBounds(instance);
+                float closestDistance = float.PositiveInfinity;
+                for (int sample = 0; sample < route.SampleCount; sample++)
+                {
+                    Vector3 routePoint = route.SampleAt(sample);
+                    float closestX = Mathf.Clamp(routePoint.x, bounds.min.x, bounds.max.x);
+                    float closestZ = Mathf.Clamp(routePoint.z, bounds.min.z, bounds.max.z);
+                    float distance = Vector2.Distance(
+                        new Vector2(routePoint.x, routePoint.z),
+                        new Vector2(closestX, closestZ));
+                    closestDistance = Mathf.Min(closestDistance, distance);
+                }
+
+                if (closestDistance >= requiredDistance)
+                {
+                    break;
+                }
+
+                instance.transform.position += side
+                    * (sideSign * (requiredDistance - closestDistance + 0.1f));
             }
         }
 

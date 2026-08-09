@@ -270,6 +270,11 @@ namespace CargoStack.EditorTools
 
             PhysicsMaterial bedPhysics = EnsurePhysicsMaterial("BedSurface", 0.55f, 0.65f);
             PhysicsMaterial cargoPhysics = EnsurePhysicsMaterial("CargoSurface", 0.45f, 0.55f);
+            PhysicsMaterial slipperyCargoPhysics = EnsurePhysicsMaterial(
+                "IceCargoSurface",
+                0.015f,
+                0.02f,
+                PhysicsMaterialCombine.Minimum);
             PhysicsMaterial roadPhysics = isWinter
                 ? EnsurePhysicsMaterial("IceRoadSurface", 0.02f, 0.02f)
                 : null;
@@ -330,6 +335,7 @@ namespace CargoStack.EditorTools
                     .Num("goalDistance", goalDistance)
                     .Num("maxSpeed", definition.MaxSpeed)
                     .Curve("speedOverProgress", definition.CopySpeedOverProgress())
+                    .Mask("groundMask", 1 << groundLayer)
                     .Num("minSpeedFactor", 0.06f)
                     .Num("rideHeight", RideHeight);
             }
@@ -341,6 +347,7 @@ namespace CargoStack.EditorTools
             List<Cargo> cargo = BuildCargo(
                 truck.transform,
                 cargoPhysics,
+                slipperyCargoPhysics,
                 definition.Cargo,
                 LoadPrototypeImpactClips());
 
@@ -1162,7 +1169,8 @@ namespace CargoStack.EditorTools
         /// </summary>
         private static List<Cargo> BuildCargo(
             Transform truck,
-            PhysicsMaterial physics,
+            PhysicsMaterial standardPhysics,
+            PhysicsMaterial slipperyPhysics,
             IReadOnlyList<StageCargoDefinition> definitions,
             AudioClip[] impactClips)
         {
@@ -1185,7 +1193,10 @@ namespace CargoStack.EditorTools
                     -3f - index / 3 * 1.2f);
 
                 item.transform.position = truck.TransformPoint(localSpot);
-                AddCargoCollider(item, definition, proxySize, physics);
+                PhysicsMaterial surfacePhysics = definition.SurfaceType == StageCargoSurfaceType.Slippery
+                    ? slipperyPhysics
+                    : standardPhysics;
+                AddCargoCollider(item, definition, proxySize, surfacePhysics);
 
                 Rigidbody body = item.AddComponent<Rigidbody>();
                 body.mass = definition.Mass;
@@ -1247,9 +1258,14 @@ namespace CargoStack.EditorTools
             visual.name = $"ImportedVisual_{definition.AssetName}";
             visual.transform.SetParent(cargoRoot, false);
             visual.transform.localPosition = Vector3.zero;
-            // The supplied Meshy FBX files use Z-up. Turn their +Z axis toward Unity's +Y world
-            // before measuring the renderer and creating its matching physics proxy.
-            visual.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+            bool sourceIsZUp = string.Equals(
+                Path.GetExtension(modelPath),
+                ".fbx",
+                StringComparison.OrdinalIgnoreCase);
+            // 기존 Meshy FBX는 Z-up이고, GLB에서 변환한 OBJ는 이미 Unity와 같은 Y-up이다.
+            visual.transform.localRotation = sourceIsZUp
+                ? Quaternion.Euler(-90f, 0f, 0f)
+                : Quaternion.identity;
             Vector3 importedScale = visual.transform.localScale;
 
             foreach (Collider collider in visual.GetComponentsInChildren<Collider>(true))
@@ -1271,10 +1287,9 @@ namespace CargoStack.EditorTools
                     definition.MaximumSize.z / originalBounds.size.z);
                 // FBX의 Z-up을 Y-up으로 세우려고 루트를 X축 -90도로 돌렸으므로,
                 // 월드 Y/Z 배율은 모델 로컬 Z/Y축에 각각 적용해야 한다.
-                Vector3 modelStretch = new(
-                    worldStretch.x,
-                    worldStretch.z,
-                    worldStretch.y);
+                Vector3 modelStretch = sourceIsZUp
+                    ? new Vector3(worldStretch.x, worldStretch.z, worldStretch.y)
+                    : worldStretch;
                 visual.transform.localScale = Vector3.Scale(importedScale, modelStretch);
             }
             else
@@ -1331,10 +1346,38 @@ namespace CargoStack.EditorTools
             material.SetTexture("_MainTex", LoadCargoTexture(definition, "Albedo"));
             material.SetTexture("_MetallicGlossMap", LoadCargoTexture(definition, "Metallic"));
             material.SetTexture("_BumpMap", LoadCargoTexture(definition, "Normal", true));
-            material.SetFloat("_Metallic", 1f);
-            material.SetFloat("_Glossiness", 0.25f);
+            bool isSlippery = definition.SurfaceType == StageCargoSurfaceType.Slippery;
+            material.SetFloat("_Metallic", isSlippery ? 0.05f : 1f);
+            material.SetFloat("_Glossiness", isSlippery ? 0.82f : 0.25f);
+            material.color = isSlippery
+                ? new Color(0.78f, 0.92f, 1f, 0.82f)
+                : Color.white;
             material.EnableKeyword("_METALLICGLOSSMAP");
             material.EnableKeyword("_NORMALMAP");
+
+            if (isSlippery)
+            {
+                material.SetFloat("_Mode", 3f);
+                material.SetInt("_SrcBlend", (int)BlendMode.SrcAlpha);
+                material.SetInt("_DstBlend", (int)BlendMode.OneMinusSrcAlpha);
+                material.SetInt("_ZWrite", 0);
+                material.DisableKeyword("_ALPHATEST_ON");
+                material.EnableKeyword("_ALPHABLEND_ON");
+                material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                material.renderQueue = (int)RenderQueue.Transparent;
+            }
+            else
+            {
+                material.SetFloat("_Mode", 0f);
+                material.SetInt("_SrcBlend", (int)BlendMode.One);
+                material.SetInt("_DstBlend", (int)BlendMode.Zero);
+                material.SetInt("_ZWrite", 1);
+                material.DisableKeyword("_ALPHATEST_ON");
+                material.DisableKeyword("_ALPHABLEND_ON");
+                material.DisableKeyword("_ALPHAPREMULTIPLY_ON");
+                material.renderQueue = -1;
+            }
+
             EditorUtility.SetDirty(material);
             return material;
         }
@@ -1363,7 +1406,21 @@ namespace CargoStack.EditorTools
 
         private static string GetCargoModelPath(StageCargoDefinition definition)
         {
-            return $"{GetCargoFolder(definition)}/{definition.AssetName}.fbx";
+            string folder = GetCargoFolder(definition);
+            string fbxPath = $"{folder}/{definition.AssetName}.fbx";
+            if (AssetDatabase.LoadMainAssetAtPath(fbxPath) != null)
+            {
+                return fbxPath;
+            }
+
+            string objPath = $"{folder}/{definition.AssetName}.obj";
+            if (AssetDatabase.LoadMainAssetAtPath(objPath) != null)
+            {
+                return objPath;
+            }
+
+            throw new InvalidOperationException(
+                $"화물 모델을 찾지 못했다: {fbxPath} 또는 {objPath}");
         }
 
         private static string GetCargoMaterialPath(StageCargoDefinition definition)
@@ -1757,7 +1814,11 @@ namespace CargoStack.EditorTools
             return fallback;
         }
 
-        private static PhysicsMaterial EnsurePhysicsMaterial(string name, float dynamicFriction, float staticFriction)
+        private static PhysicsMaterial EnsurePhysicsMaterial(
+            string name,
+            float dynamicFriction,
+            float staticFriction,
+            PhysicsMaterialCombine frictionCombine = PhysicsMaterialCombine.Average)
         {
             string path = $"{MaterialFolder}/{name}.physicsMaterial";
             var existing = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(path);
@@ -1766,7 +1827,7 @@ namespace CargoStack.EditorTools
             material.dynamicFriction = dynamicFriction;
             material.staticFriction = staticFriction;
             material.bounciness = 0f;
-            material.frictionCombine = PhysicsMaterialCombine.Average;
+            material.frictionCombine = frictionCombine;
 
             if (existing == null)
             {

@@ -26,4 +26,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Stage05_Winter.unity
     guid: 53e1102dcc9754974a5ca11013f494d1
+  - enabled: 1
+    path: Assets/Scenes/Stage06_FrozenCargo.unity
+    guid: 41aa47423c4e3462b816a39787cd84df
   m_configObjects: {}
