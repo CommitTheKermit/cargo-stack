@@ -135,6 +135,9 @@ namespace CargoStack
         [SerializeField] private StageCargoColliderShape colliderShape =
             StageCargoColliderShape.Box;
 
+        [Tooltip("화물 표면의 접지 특성. Slippery는 얼음 화물처럼 짐칸에서 쉽게 미끄러진다.")]
+        [SerializeField] private StageCargoSurfaceType surfaceType = StageCargoSurfaceType.Standard;
+
         [Tooltip("모델 원래 비율을 무시하고 maximumSize에 정확히 맞춘다. 대형 가전 박스처럼 길쭉한 화물에만 사용한다.")]
         [SerializeField] private bool stretchToMaximumSize;
 
@@ -148,6 +151,7 @@ namespace CargoStack
         public Vector3 MaximumSize => maximumSize;
         public float Mass => mass;
         public StageCargoColliderShape ColliderShape => colliderShape;
+        public StageCargoSurfaceType SurfaceType => surfaceType;
         public bool StretchToMaximumSize => stretchToMaximumSize;
         public bool IsFragile => isFragile;
         public float BreakImpactSpeed => breakImpactSpeed;
@@ -180,6 +184,12 @@ namespace CargoStack
                     $"{stageName}: {index}번 화물의 충돌 형태가 올바르지 않다.");
             }
 
+            if (!Enum.IsDefined(typeof(StageCargoSurfaceType), surfaceType))
+            {
+                throw new InvalidOperationException(
+                    $"{stageName}: {index}번 화물의 표면 형태가 올바르지 않다.");
+            }
+
             if (isFragile && breakImpactSpeed <= 0f)
             {
                 throw new InvalidOperationException(
@@ -192,5 +202,11 @@ namespace CargoStack
     {
         Box,
         Capsule,
+    }
+
+    public enum StageCargoSurfaceType
+    {
+        Standard,
+        Slippery,
     }
 }

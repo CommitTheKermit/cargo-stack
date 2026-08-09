@@ -4,23 +4,23 @@ using UnityEngine;
 namespace CargoStack
 {
     /// <summary>
-    /// 정해진 경로를 자동 주행하는 트럭. 플레이어는 운전하지 않는다.
-    /// 바퀴 물리 대신 <see cref="RoutePath"/> 위를 미끄러지는 키네마틱 차체를 쓴다(기획서 4.1).
-    /// 짐은 짐칸 콜라이더와의 마찰로만 실려 가므로, 여기서 만들어내는 가속·감속·경사·커브가 곧 난이도다.
+    /// 경로를 자동 조향하는 트럭. 진행 방향은 경로가 정하지만 실제 이동 방향은 바퀴 아래
+    /// <see cref="PhysicsMaterial.dynamicFriction"/>으로 제한되는 횡접지력이 정한다.
+    /// 얼음에서 코너를 돌면 기존 속도의 관성이 남아 코너 바깥으로 밀리고, 직선이나 고마찰
+    /// 노면에서는 목표 진행 방향을 바로 따라간다.
     ///
-    /// 경로가 곧 도로 표면이라 지면을 레이캐스트로 찾지 않는다. 도로 블록은 중심선 아래로 매달아
-    /// 깔기 때문에 블록 이음매마다 몇 cm 씩 생기는 톱니를 트럭이 그대로 밟는 문제가 사라진다.
+    /// 차체는 화물을 안정적으로 운반하는 키네마틱 플랫폼으로 유지한다. 대신 매 물리 프레임에
+    /// 속도 벡터를 적분하고, 노면 마찰로 가능한 만큼만 그 방향을 조향 방향으로 돌린다.
+    /// 위치 오프셋 커브로 차체를 옆으로 이동시키는 연출은 사용하지 않는다.
     /// </summary>
     [RequireComponent(typeof(Rigidbody))]
     public class TruckMover : MonoBehaviour
     {
+        private const float Gravity = 9.81f;
+
         [Header("경로")]
         [SerializeField] private RoutePath path;
-
-        [Tooltip("출발선의 경로상 거리.")]
         [SerializeField] private float startDistance;
-
-        [Tooltip("이 거리를 지나면 도착으로 판정한다.")]
         [SerializeField] private float goalDistance = 60f;
 
         [Header("속도 프로필")]
@@ -32,6 +32,22 @@ namespace CargoStack
         [Tooltip("최저 속도 배율. 0 이면 트럭이 영영 멈춰 설 수 있으므로 반드시 0보다 커야 한다.")]
         [SerializeField] private float minSpeedFactor = 0.06f;
 
+        [Header("타이어 접지")]
+        [Tooltip("바퀴 아래 도로 콜라이더를 찾는 레이어.")]
+        [SerializeField] private LayerMask groundMask;
+
+        [Tooltip("PhysicsMaterial 마찰을 타이어 횡접지력으로 환산하는 배율.")]
+        [SerializeField, Min(0f)] private float tireFrictionMultiplier = 6.2f;
+
+        [Tooltip("앞쪽 경로를 바라보며 자동 조향하는 거리. 짧을수록 복귀가 빠르고 조향이 거칠다.")]
+        [SerializeField, Min(1f)] private float steeringLookAhead = 7f;
+
+        [Tooltip("PhysicsMaterial이 없는 일반 도로에서 사용할 마찰 계수.")]
+        [SerializeField, Min(0f)] private float defaultSurfaceFriction = 0.8f;
+
+        [Tooltip("차체 횡가속도 1m/s²당 보이는 롤 각도.")]
+        [SerializeField, Min(0f)] private float rollDegreesPerAcceleration = 1.4f;
+
         [Header("차체")]
         [SerializeField] private float frontAxleOffset = 1.75f;
         [SerializeField] private float rearAxleOffset = -1.75f;
@@ -42,16 +58,34 @@ namespace CargoStack
         private Rigidbody body;
         private float travelled;
         private bool isDriving;
+        private Vector3 planarPosition;
+        private Vector3 planarVelocity;
+        private Vector3 steeringHeading = Vector3.right;
+        private float rollVelocity;
 
-        /// <summary>도착 지점 통과. GameFlow 가 결과 단계로 넘어가는 신호다.</summary>
         public event Action Arrived;
 
         public float Speed { get; private set; }
 
-        /// <summary>최고 속도 대비 현재 속도. 시각·음향 피드백에서 사용한다.</summary>
+        /// <summary>현재 경로 중심에서 오른쪽을 양수로 잰 실제 횡이탈 거리.</summary>
+        public float LateralDriftOffset { get; private set; }
+
+        /// <summary>차체가 바라보는 방향과 실제 속도 벡터 사이의 슬립 각.</summary>
+        public float DriftYawDegrees { get; private set; }
+
+        public float DriftRollDegrees { get; private set; }
+
+        /// <summary>경로 오른쪽을 양수로 잰 실제 횡방향 속도.</summary>
+        public float LateralSlipSpeed { get; private set; }
+
+        /// <summary>현재 경로를 그대로 따라가기 위해 필요한 부호 있는 횡가속도.</summary>
+        public float CorneringAccelerationDemand { get; private set; }
+
+        /// <summary>현재 바퀴 아래 콜라이더의 동마찰 계수.</summary>
+        public float SurfaceFriction { get; private set; }
+
         public float Speed01 => maxSpeed > 0f ? Mathf.Clamp01(Speed / maxSpeed) : 0f;
 
-        /// <summary>주행 진행도 0~1. HUD 와 속도 프로필이 같은 값을 본다.</summary>
         public float Progress => Mathf.InverseLerp(startDistance, goalDistance, travelled);
 
         private void Awake()
@@ -60,18 +94,33 @@ namespace CargoStack
             body.isKinematic = true;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             travelled = startDistance;
+            Vector3 routePosition = path.PositionAt(travelled);
+            planarPosition = new Vector3(routePosition.x, 0f, routePosition.z);
+            steeringHeading = PathHeadingAt(travelled);
+            SurfaceFriction = SampleSurfaceFriction(routePosition);
         }
 
         public void BeginDrive()
         {
             isDriving = true;
+            Speed = EvaluateSpeed();
+            if (planarVelocity.sqrMagnitude < 1e-5f)
+            {
+                planarVelocity = PathHeadingAt(travelled) * PlanarSpeedAt(travelled, Speed);
+            }
         }
 
         /// <summary>씬 빌더가 출발 자세를 잡을 때 쓴다. 에디터에서도 경로 위에 정확히 올려 둔다.</summary>
         public void SnapToStart()
         {
             travelled = startDistance;
-            GetPoseAt(travelled, out Vector3 position, out Quaternion rotation);
+            Vector3 routePosition = path.PositionAt(travelled);
+            steeringHeading = PathHeadingAt(travelled);
+            planarPosition = new Vector3(routePosition.x, 0f, routePosition.z);
+            planarVelocity = Vector3.zero;
+            ResetSlipFeedback();
+            SurfaceFriction = SampleSurfaceFriction(routePosition);
+            GetPoseAt(routePosition, steeringHeading, 0f, out Vector3 position, out Quaternion rotation);
             transform.SetPositionAndRotation(position, rotation);
         }
 
@@ -82,13 +131,34 @@ namespace CargoStack
                 return;
             }
 
-            // 바닥을 0 이 아니라 minSpeedFactor 로 잡는다. 급제동 골짜기를 좁고 깊게 파면
-            // 커브를 부드럽게 이을 때 값이 음수까지 내려가는데, 그걸 0 으로 자르면
-            // 트럭이 더 이상 나아가지 못해 그 자리에 영영 서 버린다.
-            float factor = Mathf.Max(minSpeedFactor, speedOverProgress.Evaluate(Progress));
-            Speed = maxSpeed * factor;
+            float deltaTime = Time.fixedDeltaTime;
+            Speed = EvaluateSpeed();
 
-            travelled += Speed * Time.fixedDeltaTime;
+            Vector3 routePosition = path.PositionAt(travelled);
+            Vector3 pathHeading = PathHeadingAt(travelled);
+            Vector3 pathRight = Vector3.Cross(Vector3.up, pathHeading).normalized;
+            Vector3 routeToTruck = new(
+                planarPosition.x - routePosition.x,
+                0f,
+                planarPosition.z - routePosition.z);
+            float lateralOffset = Vector3.Dot(routeToTruck, pathRight);
+            Vector3 steeringTarget = pathHeading * steeringLookAhead - pathRight * lateralOffset;
+            steeringHeading = steeringTarget.sqrMagnitude > 1e-5f
+                ? steeringTarget.normalized
+                : pathHeading;
+
+            SurfaceFriction = SampleSurfaceFriction(routePosition);
+            float planarSpeed = PlanarSpeedAt(travelled, Speed);
+            float appliedLateralAcceleration = ApplySurfaceTraction(
+                deltaTime,
+                steeringHeading,
+                planarSpeed);
+            planarPosition += planarVelocity * deltaTime;
+
+            float directionAlignment = planarVelocity.sqrMagnitude > 1e-5f
+                ? Mathf.Max(0f, Vector3.Dot(planarVelocity.normalized, pathHeading))
+                : 0f;
+            travelled += Speed * directionAlignment * deltaTime;
 
             bool reachedGoal = travelled >= goalDistance;
             if (reachedGoal)
@@ -98,7 +168,15 @@ namespace CargoStack
                 Speed = 0f;
             }
 
-            GetPoseAt(travelled, out Vector3 position, out Quaternion rotation);
+            routePosition = path.PositionAt(travelled);
+            pathHeading = PathHeadingAt(travelled);
+            UpdateSlipFeedback(routePosition, pathHeading, appliedLateralAcceleration, deltaTime);
+            GetPoseAt(
+                routePosition,
+                steeringHeading,
+                DriftRollDegrees,
+                out Vector3 position,
+                out Quaternion rotation);
             body.MovePosition(position);
             body.MoveRotation(rotation);
 
@@ -108,23 +186,166 @@ namespace CargoStack
             }
         }
 
-        /// <summary>앞뒤 축이 짚는 두 지점을 이어 차체의 기울기와 방향을 함께 얻는다.</summary>
-        private void GetPoseAt(float distance, out Vector3 position, out Quaternion rotation)
+        private float EvaluateSpeed()
         {
-            Vector3 front = path.PositionAt(distance + frontAxleOffset);
-            Vector3 rear = path.PositionAt(distance + rearAxleOffset);
+            float factor = Mathf.Max(minSpeedFactor, speedOverProgress.Evaluate(Progress));
+            return maxSpeed * factor;
+        }
 
-            Vector3 heading = front - rear;
-            if (heading.sqrMagnitude < 1e-6f)
+        /// <summary>
+        /// 엔진은 종방향 속도를 유지하지만, 횡방향 속도는 μg를 넘는 속도로 지울 수 없다.
+        /// 낮은 μ의 얼음에서는 조향 방향이 바뀌어도 이전 속도 방향이 남아 바깥으로 미끄러진다.
+        /// </summary>
+        private float ApplySurfaceTraction(
+            float deltaTime,
+            Vector3 desiredHeading,
+            float desiredPlanarSpeed)
+        {
+            Vector3 right = Vector3.Cross(Vector3.up, desiredHeading).normalized;
+            if (planarVelocity.sqrMagnitude < 1e-5f)
             {
-                heading = transform.right;
+                planarVelocity = desiredHeading * desiredPlanarSpeed;
+                return 0f;
             }
 
-            // 차체 모델의 앞이 로컬 +X 라서, +Z 를 겨누는 LookRotation 을 90도 돌려 맞춘다.
-            rotation = Quaternion.LookRotation(heading.normalized, Vector3.up) * Quaternion.Euler(0f, -90f, 0f);
+            float lateralSpeed = Vector3.Dot(planarVelocity, right);
+            float maxLateralSpeedChange = SurfaceFriction
+                * tireFrictionMultiplier
+                * Gravity
+                * deltaTime;
+            float lateralSpeedChange = Mathf.Clamp(
+                -lateralSpeed,
+                -maxLateralSpeedChange,
+                maxLateralSpeedChange);
+            planarVelocity += right * lateralSpeedChange;
+            planarVelocity = planarVelocity.sqrMagnitude > 1e-5f
+                ? planarVelocity.normalized * desiredPlanarSpeed
+                : desiredHeading * desiredPlanarSpeed;
+            return deltaTime > 0f ? lateralSpeedChange / deltaTime : 0f;
+        }
 
-            // 차체 높이는 도로 면의 법선 방향으로 띄운다. 경사에서 차체가 파묻히지 않게 한다.
-            position = (front + rear) * 0.5f + rotation * Vector3.up * rideHeight;
+        private float PlanarSpeedAt(float distance, float pathSpeed)
+        {
+            Vector3 slope = path.PositionAt(distance + frontAxleOffset)
+                - path.PositionAt(distance + rearAxleOffset);
+            float length = slope.magnitude;
+            if (length < 1e-5f)
+            {
+                return pathSpeed;
+            }
+
+            slope.y = 0f;
+            return pathSpeed * slope.magnitude / length;
+        }
+
+        private void UpdateSlipFeedback(
+            Vector3 routePosition,
+            Vector3 pathHeading,
+            float appliedLateralAcceleration,
+            float deltaTime)
+        {
+            Vector3 pathRight = Vector3.Cross(Vector3.up, pathHeading).normalized;
+            Vector3 routeToTruck = new(
+                planarPosition.x - routePosition.x,
+                0f,
+                planarPosition.z - routePosition.z);
+            LateralDriftOffset = Vector3.Dot(routeToTruck, pathRight);
+            LateralSlipSpeed = Vector3.Dot(planarVelocity, pathRight);
+            CorneringAccelerationDemand = CalculateCorneringDemand(travelled, Speed);
+
+            Vector3 velocityHeading = planarVelocity.sqrMagnitude > 1e-5f
+                ? planarVelocity.normalized
+                : steeringHeading;
+            DriftYawDegrees = Vector3.SignedAngle(steeringHeading, velocityHeading, Vector3.up);
+
+            float targetRoll = -appliedLateralAcceleration * rollDegreesPerAcceleration;
+            DriftRollDegrees = Mathf.SmoothDamp(
+                DriftRollDegrees,
+                targetRoll,
+                ref rollVelocity,
+                0.18f,
+                Mathf.Infinity,
+                deltaTime);
+        }
+
+        private float CalculateCorneringDemand(float distance, float speed)
+        {
+            const float SampleDistance = 2f;
+            Vector3 before = PathHeadingBetween(distance - SampleDistance, distance);
+            Vector3 after = PathHeadingBetween(distance, distance + SampleDistance);
+            float signedRadians = Vector3.SignedAngle(before, after, Vector3.up) * Mathf.Deg2Rad;
+            return signedRadians / (SampleDistance * 2f) * speed * speed;
+        }
+
+        private Vector3 PathHeadingAt(float distance)
+        {
+            return PathHeadingBetween(distance + rearAxleOffset, distance + frontAxleOffset);
+        }
+
+        private Vector3 PathHeadingBetween(float fromDistance, float toDistance)
+        {
+            Vector3 heading = path.PositionAt(toDistance) - path.PositionAt(fromDistance);
+            heading.y = 0f;
+            if (heading.sqrMagnitude < 1e-6f)
+            {
+                return steeringHeading.sqrMagnitude > 1e-6f ? steeringHeading : Vector3.right;
+            }
+
+            return heading.normalized;
+        }
+
+        private float SampleSurfaceFriction(Vector3 routePosition)
+        {
+            int mask = groundMask.value != 0 ? groundMask.value : Physics.DefaultRaycastLayers;
+            Vector3 origin = new(planarPosition.x, routePosition.y + 3f, planarPosition.z);
+            if (!Physics.Raycast(
+                    origin,
+                    Vector3.down,
+                    out RaycastHit hit,
+                    6f,
+                    mask,
+                    QueryTriggerInteraction.Ignore))
+            {
+                return defaultSurfaceFriction;
+            }
+
+            PhysicsMaterial material = hit.collider.sharedMaterial;
+            return material != null ? material.dynamicFriction : defaultSurfaceFriction;
+        }
+
+        private void ResetSlipFeedback()
+        {
+            LateralDriftOffset = 0f;
+            LateralSlipSpeed = 0f;
+            CorneringAccelerationDemand = 0f;
+            DriftYawDegrees = 0f;
+            DriftRollDegrees = 0f;
+            rollVelocity = 0f;
+        }
+
+        private void GetPoseAt(
+            Vector3 routePosition,
+            Vector3 horizontalHeading,
+            float roll,
+            out Vector3 position,
+            out Quaternion rotation)
+        {
+            Vector3 front = path.PositionAt(travelled + frontAxleOffset);
+            Vector3 rear = path.PositionAt(travelled + rearAxleOffset);
+            Vector3 slopeHeading = front - rear;
+            float horizontalLength = new Vector2(slopeHeading.x, slopeHeading.z).magnitude;
+            float risePerMeter = horizontalLength > 1e-5f ? slopeHeading.y / horizontalLength : 0f;
+            Vector3 bodyHeading = new(
+                horizontalHeading.x,
+                risePerMeter,
+                horizontalHeading.z);
+            bodyHeading.Normalize();
+
+            Quaternion pathRotation = Quaternion.LookRotation(bodyHeading, Vector3.up)
+                * Quaternion.Euler(0f, -90f, 0f);
+            position = new Vector3(planarPosition.x, routePosition.y, planarPosition.z)
+                + pathRotation * Vector3.up * rideHeight;
+            rotation = pathRotation * Quaternion.Euler(roll, 0f, 0f);
         }
     }
 }

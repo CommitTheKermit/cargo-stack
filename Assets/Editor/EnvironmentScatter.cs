@@ -63,6 +63,11 @@ namespace CargoStack.EditorTools
         // 도로 가장자리에서 이만큼 떨어진 곳부터 심는다. 도로 위나 갓길 적재 공간을 침범하지 않게 한다.
         private const float EdgeMargin = 2f;
 
+        // 겨울 패키지 프리팹은 원본 피벗과 가로 크기가 제각각이다. 특히 IcePlatform은
+        // 높이에 비해 폭이 매우 넓어, 고정된 중심점 오프셋만으로는 얼음 도로를 침범할 수 있다.
+        // 실제 Renderer.bounds를 기준으로 이 여백까지 확보한 뒤 도로 바깥으로 밀어낸다.
+        private const float WinterRoadVisualClearance = 5f;
+
         // 가장자리 여백부터 바깥으로 이만큼의 띠 안에 흩뿌린다.
         private const float BandDepth = 27f;
 
@@ -304,14 +309,19 @@ namespace CargoStack.EditorTools
                         + along * alongJitter;
                     position.y = center.y - groundDrop;
 
-                    PlaceInstance(
+                    PlaceWinterInstance(
+                        route,
                         iceTree,
                         treeRoot,
                         $"{WinterAssetPrefix}IceTree_{treeCount:000}",
                         position,
                         null,
                         4.8f,
-                        random);
+                        random,
+                        center,
+                        side,
+                        sign,
+                        roadHalfWidth);
                     treeCount++;
 
                     // 바위는 나무 사이에만 놓아 눈밭이 반복되는 띠처럼 보이지 않게 한다.
@@ -322,14 +332,19 @@ namespace CargoStack.EditorTools
                             + along * (alongJitter + 2.2f);
                         rockPosition.y = center.y - groundDrop;
                         GameObject rock = iceRocks[random.Next(iceRocks.Length)];
-                        PlaceInstance(
+                        PlaceWinterInstance(
+                            route,
                             rock,
                             rockRoot,
                             $"{WinterAssetPrefix}IceRock_{rockCount:000}",
                             rockPosition,
                             null,
                             2.4f,
-                            random);
+                            random,
+                            center,
+                            side,
+                            sign,
+                            roadHalfWidth);
                         rockCount++;
                     }
                 }
@@ -346,32 +361,44 @@ namespace CargoStack.EditorTools
                 int sign = mountainCount % 2 == 0 ? -1 : 1;
                 Vector3 position = center + side * (sign * (roadHalfWidth + 19f));
                 position.y = center.y - groundDrop;
-                PlaceInstance(
+                PlaceWinterInstance(
+                    route,
                     iceMountains[mountainCount % iceMountains.Length],
                     landmarkRoot,
                     $"{WinterAssetPrefix}IceMountain_{mountainCount:00}",
                     position,
                     null,
                     15f + (mountainCount % 3) * 2f,
-                    random);
+                    random,
+                    center,
+                    side,
+                    sign,
+                    roadHalfWidth);
                 mountainCount++;
             }
 
             float caveDistance = Mathf.Lerp(startClearance + 4f, length - 6f, 0.47f);
-            Vector3 caveCenter = route.PositionAt(caveDistance);
+            Vector3 caveRouteCenter = route.PositionAt(caveDistance);
+            Vector3 caveCenter = caveRouteCenter;
             Vector3 caveSide = SideDirection(route, caveDistance, length);
             caveCenter += caveSide * (roadHalfWidth + 17f);
-            caveCenter.y = route.PositionAt(caveDistance).y - groundDrop;
-            PlaceInstance(
+            caveCenter.y = caveRouteCenter.y - groundDrop;
+            PlaceWinterInstance(
+                route,
                 iceCave,
                 landmarkRoot,
                 $"{WinterAssetPrefix}IceCave",
                 caveCenter,
                 null,
                 11f,
-                random);
+                random,
+                caveRouteCenter,
+                caveSide,
+                1,
+                roadHalfWidth);
 
-            // 얼음 플랫폼은 산과 산 사이의 낮은 지형에 두어 공식 패키지의 빙하 지형을 보강한다.
+            // 얼음 플랫폼은 넓은 원본 외곽 때문에 도로 가장자리에서 멀리 떼고,
+            // 산과 산 사이의 낮은 지형에 작게 두어 공식 패키지의 빙하 지형을 보강한다.
             float[] platformProgress = { 0.27f, 0.72f };
             for (int index = 0; index < platformProgress.Length; index++)
             {
@@ -381,14 +408,19 @@ namespace CargoStack.EditorTools
                 int sign = index == 0 ? -1 : 1;
                 Vector3 position = center + side * (sign * (roadHalfWidth + 12f));
                 position.y = center.y - groundDrop;
-                PlaceInstance(
+                PlaceWinterInstance(
+                    route,
                     icePlatforms[index],
                     platformRoot,
                     $"{WinterAssetPrefix}IcePlatform_{index:00}",
                     position,
                     null,
-                    3.8f,
-                    random);
+                    2.2f,
+                    random,
+                    center,
+                    side,
+                    sign,
+                    roadHalfWidth);
             }
 
             // 눈사람은 시작·중간·도착의 눈 지면에 배치해 실제 패키지의 캐릭터 소품도 노출한다.
@@ -401,14 +433,19 @@ namespace CargoStack.EditorTools
                 int sign = index % 2 == 0 ? 1 : -1;
                 Vector3 position = center + side * (sign * (roadHalfWidth + 5.5f));
                 position.y = center.y - groundDrop;
-                PlaceInstance(
+                PlaceWinterInstance(
+                    route,
                     snowmen[index % snowmen.Length],
                     snowmanRoot,
                     $"{WinterAssetPrefix}Snowman_{index:00}",
                     position,
                     null,
                     2.1f,
-                    random);
+                    random,
+                    center,
+                    side,
+                    sign,
+                    roadHalfWidth);
             }
 
             Debug.Log(
@@ -557,6 +594,105 @@ namespace CargoStack.EditorTools
             instance.transform.position += new Vector3(0f, lift, 0f);
 
             return GetRendererBounds(instance).size;
+        }
+
+        /// <summary>
+        /// 겨울 프리팹의 실제 렌더러 외곽이 도로 회랑을 침범하지 않게 옆으로 민다.
+        /// 프리팹마다 피벗·가로 크기가 달라 고정 오프셋만으로는 IcePlatform 같은 넓은
+        /// 지형이 도로를 가리는 문제가 생긴다. 시각 경계만 조정하고, 패키지 프리팹의
+        /// 모양·재질·배치는 그대로 유지한다.
+        /// </summary>
+        private static Vector3 PlaceWinterInstance(
+            RoutePath route,
+            GameObject model,
+            Transform parent,
+            string name,
+            Vector3 groundPosition,
+            Material material,
+            float targetHeight,
+            System.Random random,
+            Vector3 routeCenter,
+            Vector3 side,
+            int sideSign,
+            float roadHalfWidth)
+        {
+            Vector3 size = PlaceInstance(
+                model,
+                parent,
+                name,
+                groundPosition,
+                material,
+                targetHeight,
+                random);
+
+            GameObject instance = parent.Find(name)?.gameObject;
+            if (instance == null)
+            {
+                throw new InvalidOperationException(
+                    $"겨울 환경 인스턴스를 찾지 못했다: {parent.name}/{name}");
+            }
+
+            KeepWinterInstanceOffRoad(
+                route,
+                instance,
+                routeCenter,
+                side,
+                sideSign,
+                roadHalfWidth);
+            return size;
+        }
+
+        private static void KeepWinterInstanceOffRoad(
+            RoutePath route,
+            GameObject instance,
+            Vector3 routeCenter,
+            Vector3 side,
+            int sideSign,
+            float roadHalfWidth)
+        {
+            Bounds bounds = GetRendererBounds(instance);
+            float lateralExtent = Mathf.Abs(side.x) * bounds.extents.x
+                + Mathf.Abs(side.z) * bounds.extents.z;
+            float signedCenterDistance = Vector3.Dot(
+                bounds.center - routeCenter,
+                side) * sideSign;
+            float requiredDistance = roadHalfWidth
+                + WinterRoadVisualClearance
+                + lateralExtent;
+
+            if (signedCenterDistance < requiredDistance)
+            {
+                instance.transform.position += side
+                    * (sideSign * (requiredDistance - signedCenterDistance));
+            }
+
+            // S자 경로에서는 배치 기준점에서 멀어져도 다른 곡선 구간이
+            // 크게 휘어 인스턴스 뒤로 가까이 올 수 있다. 전체 경로를 기준으로
+            // 렌더러 외곽과의 최소 거리를 다시 확인해 곡선 안쪽의 침범을 막는다.
+            const int MaximumPushAttempts = 16;
+            for (int attempt = 0; attempt < MaximumPushAttempts; attempt++)
+            {
+                bounds = GetRendererBounds(instance);
+                float closestDistance = float.PositiveInfinity;
+                for (int sample = 0; sample < route.SampleCount; sample++)
+                {
+                    Vector3 routePoint = route.SampleAt(sample);
+                    float closestX = Mathf.Clamp(routePoint.x, bounds.min.x, bounds.max.x);
+                    float closestZ = Mathf.Clamp(routePoint.z, bounds.min.z, bounds.max.z);
+                    float distance = Vector2.Distance(
+                        new Vector2(routePoint.x, routePoint.z),
+                        new Vector2(closestX, closestZ));
+                    closestDistance = Mathf.Min(closestDistance, distance);
+                }
+
+                if (closestDistance >= requiredDistance)
+                {
+                    break;
+                }
+
+                instance.transform.position += side
+                    * (sideSign * (requiredDistance - closestDistance + 0.1f));
+            }
         }
 
         private static Bounds GetRendererBounds(GameObject target)
