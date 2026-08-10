@@ -647,6 +647,47 @@ namespace CargoStack.Tests
                 + $"최대 경사 {steepestAngle:0.0}°, 화물 {cargo.Length}개");
         }
 
+        [UnityTest]
+        public IEnumerator 두번째부터_도로_장애물이_스테이지마다_하나씩_늘어난다()
+        {
+            string[] scenes =
+            {
+                "Stage01_Tutorial",
+                "Stage02_SpeedBumps",
+                "Stage03_HillsAndPits",
+                "Stage04_ComplexRoute",
+                "Stage05_Winter",
+                "Stage06_FrozenCargo",
+                "Stage07_HardBumps",
+            };
+
+            for (int index = 0; index < scenes.Length; index++)
+            {
+                yield return SceneManager.LoadSceneAsync(scenes[index], LoadSceneMode.Single);
+                GameObject obstacles = GameObject.Find("RoadObstacles");
+                if (index == 0)
+                {
+                    Assert.IsNull(obstacles, "Stage01에는 도로 장애물이 없어야 한다");
+                    continue;
+                }
+
+                int expected = index + 1;
+                Assert.NotNull(obstacles, $"{scenes[index]}에 도로 장애물이 없다");
+                Assert.AreEqual(expected, obstacles.transform.childCount,
+                    $"{scenes[index]} 장애물 수가 난이도 단계와 다르다");
+                foreach (Transform obstacle in obstacles.transform)
+                {
+                    BoxCollider collider = obstacle.GetComponent<BoxCollider>();
+                    Assert.NotNull(collider, $"{obstacle.name}에 차량 충돌체가 없다");
+                    Assert.IsTrue(collider.isTrigger,
+                        $"{obstacle.name}가 화물 물리에 직접 간섭한다");
+                    Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), obstacle.gameObject.layer);
+                }
+            }
+
+            Debug.Log("[CargoStack] 도로 장애물: Stage01=0, Stage02~07=2/3/4/5/6/7개");
+        }
+
         private static void AssertWinterEnvironmentStaysOutsideRoad(
             RoutePath route,
             GameObject environment)

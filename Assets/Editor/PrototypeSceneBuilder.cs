@@ -39,6 +39,10 @@ namespace CargoStack.EditorTools
         private const string TitleFontPath = FontFolder + "/Pretendard-Light.ttf";
         private const string BodyFontPath = FontFolder + "/Pretendard-Regular.ttf";
         private const string MenuBackgroundVideoPath = "Assets/Video/MenuBackground.mp4";
+        private const string GeneralObstacleFolder =
+            "Assets/3D Enivronment Assets/Prefabs/GeneralPrefabs";
+        private const string IceObstacleFolder =
+            "Assets/3D Enivronment Assets/Prefabs/IcePrefabs";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
         // v2 Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤
@@ -252,6 +256,7 @@ namespace CargoStack.EditorTools
             AssetDatabase.Refresh();
 
             int groundLayer = EnsureLayer("Ground");
+            int obstacleLayer = EnsureLayer("Obstacle");
 
             bool isWinter = definition.Theme == StageTheme.Winter;
 
@@ -316,6 +321,13 @@ namespace CargoStack.EditorTools
                     + $"출발 거리({definition.TruckStartDistance:0.##}m)보다 뒤에 있지 않다.");
             }
 
+            BuildRoadObstacles(
+                route,
+                definition,
+                goalDistance,
+                obstacleLayer,
+                isWinter);
+
             CreateLighting(isWinter);
 
             GameObject truck = BuildTruck(
@@ -336,6 +348,7 @@ namespace CargoStack.EditorTools
                     .Num("maxSpeed", definition.MaxSpeed)
                     .Curve("speedOverProgress", definition.CopySpeedOverProgress())
                     .Mask("groundMask", 1 << groundLayer)
+                    .Mask("obstacleMask", 1 << obstacleLayer)
                     .Num("minSpeedFactor", 0.06f)
                     .Num("rideHeight", RideHeight);
             }
@@ -407,6 +420,125 @@ namespace CargoStack.EditorTools
 
             Debug.Log($"[CargoStack] {definition.StageId} 씬 생성 완료: {scenePath} " +
                 $"(경로 {route.TotalLength:0.0}m, 도착 {goalDistance:0.0}m, 도로 조각 {route.SampleCount - 1}개, 화물 {cargo.Count}개)");
+        }
+
+        private static void BuildRoadObstacles(
+            RoutePath route,
+            StageDefinition definition,
+            float goalDistance,
+            int layer,
+            bool winter)
+        {
+            if (!definition.StageId.StartsWith("stage-", StringComparison.Ordinal)
+                || !int.TryParse(definition.StageId.Substring(6), out int stageNumber)
+                || stageNumber < 2)
+            {
+                return;
+            }
+
+            int count = Mathf.Min(stageNumber, 7);
+            string[] palette = winter
+                ? new[]
+                {
+                    IceObstacleFolder + "/IceRock_01.prefab",
+                    IceObstacleFolder + "/IceRock_02.prefab",
+                    IceObstacleFolder + "/IceRock_03.prefab",
+                }
+                : new[]
+                {
+                    GeneralObstacleFolder + "/XBarrier.prefab",
+                    GeneralObstacleFolder + "/SandBagStack.prefab",
+                };
+
+            var root = new GameObject("RoadObstacles").transform;
+            float firstDistance = definition.TruckStartDistance + 18f;
+            float lastDistance = goalDistance - 10f;
+            float lateralOffset = Mathf.Lerp(2f, 1.1f, (stageNumber - 2f) / 5f);
+
+            for (int index = 0; index < count; index++)
+            {
+                float distance = Mathf.Lerp(
+                    firstDistance,
+                    lastDistance,
+                    (index + 1f) / (count + 1f));
+                Vector3 point = route.PositionAt(distance);
+                Vector3 tangent = route.PositionAt(distance + 1f)
+                    - route.PositionAt(distance - 1f);
+                tangent.y = 0f;
+                tangent.Normalize();
+                Vector3 side = Vector3.Cross(Vector3.up, tangent).normalized;
+                point += side * ((index % 2 == 0 ? -1f : 1f) * lateralOffset);
+
+                GameObject prefab = AssetDatabase.LoadAssetAtPath<GameObject>(
+                    palette[index % palette.Length])
+                    ?? throw new InvalidOperationException(
+                        $"도로 장애물 프리팹을 찾지 못했다: {palette[index % palette.Length]}");
+                var obstacle = new GameObject($"Obstacle_{index + 1:00}");
+                obstacle.layer = layer;
+                obstacle.transform.SetParent(root, false);
+                obstacle.transform.SetPositionAndRotation(
+                    point,
+                    Quaternion.LookRotation(tangent, Vector3.up));
+
+                var visual = (GameObject)PrefabUtility.InstantiatePrefab(prefab, obstacle.transform);
+                visual.name = prefab.name;
+                visual.transform.SetLocalPositionAndRotation(Vector3.zero, Quaternion.identity);
+                visual.transform.localScale = Vector3.one;
+
+                Bounds bounds = LocalRendererBounds(obstacle.transform);
+                float horizontalSize = Mathf.Max(bounds.size.x, bounds.size.z);
+                visual.transform.localScale *= 2.6f / Mathf.Max(horizontalSize, 0.01f);
+                bounds = LocalRendererBounds(obstacle.transform);
+                visual.transform.localPosition -= new Vector3(
+                    bounds.center.x,
+                    bounds.min.y,
+                    bounds.center.z);
+                bounds = LocalRendererBounds(obstacle.transform);
+
+                BoxCollider collider = obstacle.AddComponent<BoxCollider>();
+                collider.isTrigger = true;
+                collider.center = bounds.center;
+                collider.size = new Vector3(
+                    Mathf.Max(bounds.size.x, 0.6f),
+                    Mathf.Max(bounds.size.y, 0.8f),
+                    Mathf.Max(bounds.size.z, 0.6f));
+            }
+
+            Debug.Log(
+                $"[CargoStack] {definition.StageId} 도로 장애물: {count}개, "
+                + $"중심 오프셋 {lateralOffset:0.0}m");
+        }
+
+        private static Bounds LocalRendererBounds(Transform root)
+        {
+            Renderer[] renderers = root.GetComponentsInChildren<Renderer>();
+            if (renderers.Length == 0)
+            {
+                throw new InvalidOperationException($"{root.name}: 장애물 Renderer가 없다.");
+            }
+
+            Bounds bounds = new Bounds(
+                root.InverseTransformPoint(renderers[0].bounds.center),
+                Vector3.zero);
+            foreach (Renderer renderer in renderers)
+            {
+                Bounds world = renderer.bounds;
+                for (int x = -1; x <= 1; x += 2)
+                {
+                    for (int y = -1; y <= 1; y += 2)
+                    {
+                        for (int z = -1; z <= 1; z += 2)
+                        {
+                            bounds.Encapsulate(root.InverseTransformPoint(
+                                world.center + Vector3.Scale(
+                                    world.extents,
+                                    new Vector3(x, y, z))));
+                        }
+                    }
+                }
+            }
+
+            return bounds;
         }
 
         private static StageDefinition LoadStageDefinition(string path)

@@ -9,6 +9,40 @@ namespace CargoStack.Tests
     public class TruckControlTests
     {
         [UnityTest]
+        public IEnumerator 장애물을_피하지_않고_직진하면_트럭이_멈춘다()
+        {
+            yield return SceneManager.LoadSceneAsync("Stage02_SpeedBumps", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            GameObject obstacles = GameObject.Find("RoadObstacles");
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            Assert.NotNull(obstacles);
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            flow.StartDriving();
+            float timeout = 15f;
+            bool accelerated = false;
+            while (timeout > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                timeout -= Time.fixedDeltaTime;
+                accelerated |= truck.Speed > 1f;
+                if (accelerated && truck.Speed < 0.01f)
+                {
+                    break;
+                }
+            }
+
+            Assert.IsTrue(accelerated, "장애물에 닿기 전에 트럭이 출발하지 못했다");
+            Assert.That(truck.Speed, Is.LessThan(0.01f), "직진한 트럭이 장애물을 통과했다");
+            Assert.That(truck.Progress, Is.LessThan(0.9f), "도착 직전까지 장애물을 만나지 못했다");
+            Debug.Log($"[CargoStack] 직진 장애물 충돌: 진행도 {truck.Progress:0.00}, 속도 {truck.Speed:0.00}m/s");
+            truck.ClearControlInputForTesting();
+        }
+
+        [UnityTest]
         public IEnumerator 앞바퀴를_조향해_전진하고_S를_누르면_제동후_후진한다()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
