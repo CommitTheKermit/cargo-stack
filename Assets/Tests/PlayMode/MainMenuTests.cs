@@ -80,6 +80,27 @@ namespace CargoStack.Tests
             Assert.NotNull(
                 Object.FindAnyObjectByType<ResultScreen>().UiFont,
                 "결과 화면에 Pretendard가 연결되지 않았다");
+
+            TutorialGuide guide = Object.FindAnyObjectByType<TutorialGuide>();
+            Assert.NotNull(guide, "Stage 01에 이미지 튜토리얼이 없다");
+            Assert.IsTrue(guide.IsLoadingPanelVisible, "적재 튜토리얼 패널이 보이지 않는다");
+            Assert.IsFalse(guide.IsDrivingPanelVisible, "출발 전에 주행 튜토리얼 패널이 보인다");
+            Assert.IsFalse(Object.FindAnyObjectByType<PrototypeHud>().enabled,
+                "Stage 01에서 기존 IMGUI HUD가 튜토리얼 위젯과 겹친다");
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            flow.StartDriving();
+            float timeout = 1f;
+            while (flow.State == GameState.Loading && timeout > 0f)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+
+            Assert.AreEqual(GameState.Driving, flow.State,
+                "체크리스트를 완료하지 않으면 출발할 수 없다");
+            Assert.IsFalse(guide.IsLoadingPanelVisible, "출발 뒤에도 적재 패널이 남아 있다");
+            Assert.IsTrue(guide.IsDrivingPanelVisible, "출발 뒤 주행 패널로 전환되지 않았다");
         }
 
         [UnityTest]

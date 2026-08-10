@@ -196,6 +196,8 @@ namespace CargoStack.Tests
             Assert.NotNull(route, "경로가 생성되지 않았다");
             Assert.That(route.TotalLength, Is.GreaterThan(100f));
             Assert.AreEqual(5, cargo.Length, "Stage 02 화물 구성이 달라졌다");
+            Assert.IsNull(Object.FindAnyObjectByType<TutorialGuide>(),
+                "Stage 02에 Stage 01 전용 튜토리얼이 생성됐다");
 
             int raisedRegions = 0;
             bool wasRaised = false;

@@ -6,6 +6,7 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
+using UnityEngine.UI;
 using Object = UnityEngine.Object;
 
 namespace CargoStack.EditorTools
@@ -32,6 +33,7 @@ namespace CargoStack.EditorTools
             BlueTruckWheelMeshGenerator.GeneratedFolder + "/BlueTruckCabGlass.asset";
         private const string StageFolder = "Assets/Stages";
         private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
+        private const string TutorialStagePath = "Assets/Stages/Stage01/Stage01Tutorial.asset";
         private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
         private const string MenuBackgroundStageScenePath = SceneFolder + "/Stage01_Tutorial.unity";
         private const string IceRoadMaterialPath = MaterialFolder + "/IceRoad.mat";
@@ -39,6 +41,12 @@ namespace CargoStack.EditorTools
         private const string FontFolder = "Assets/Fonts";
         private const string TitleFontPath = FontFolder + "/Pretendard-Light.ttf";
         private const string BodyFontPath = "Assets/Resources/Pretendard-Regular.ttf";
+        private const string TutorialUiFolder = "Assets/Art/UI/Tutorial";
+        private const string TutorialPanelPath = TutorialUiFolder + "/TutorialPanel.png";
+        private const string TutorialDrivingPanelPath = TutorialUiFolder + "/TutorialDrivingPanel.png";
+        private const string TutorialCheckSquarePath = TutorialUiFolder + "/TutorialCheckSquare.png";
+        private const string TutorialCheckRoundPath = TutorialUiFolder + "/TutorialCheckRound.png";
+        private const string TutorialBadgePath = TutorialUiFolder + "/TutorialBadge.png";
         private const string GeneralObstacleFolder =
             "Assets/3D Enivronment Assets/Prefabs/GeneralPrefabs";
         private const string IceObstacleFolder =
@@ -144,6 +152,13 @@ namespace CargoStack.EditorTools
             BuildMainMenu();
         }
 
+        [MenuItem("CargoStack/스테이지/튜토리얼과 메뉴 다시 만들기")]
+        public static void BuildTutorialStageAndMenu()
+        {
+            Build(LoadStageDefinition(TutorialStagePath));
+            BuildMainMenu();
+        }
+
         [MenuItem("CargoStack/메인 메뉴 다시 만들기")]
         public static void BuildMainMenu()
         {
@@ -190,6 +205,8 @@ namespace CargoStack.EditorTools
             Object.FindAnyObjectByType<CameraDirector>().enabled = false;
             Object.FindAnyObjectByType<PrototypeHud>().enabled = false;
             Object.FindAnyObjectByType<ResultScreen>().enabled = false;
+            Object.DestroyImmediate(Object.FindAnyObjectByType<TutorialGuide>());
+            Object.DestroyImmediate(GameObject.Find("Tutorial UI"));
             player.SetActive(false);
 
             firstPersonCamera.enabled = false;
@@ -216,6 +233,7 @@ namespace CargoStack.EditorTools
             controller.SetFonts(
                 titleFont,
                 bodyFont);
+            controller.SetTutorialBadge(BuildTutorialMenuBadge());
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
             EnsureSceneInBuildSettings(MainMenuScenePath, true);
@@ -414,6 +432,16 @@ namespace CargoStack.EditorTools
                     .Ref("bedMaterial", bedPhysics)
                     .Ref("cargoMaterial", cargoPhysics)
                     .Ref("ropeInteractor", player.GetComponent<PlayerRopeInteractor>());
+            }
+
+            if (definition.StageId == "stage-01")
+            {
+                hud.enabled = false;
+                BuildTutorialGuide(
+                    systems,
+                    flow,
+                    player.GetComponent<PlayerCargoInteractor>(),
+                    player.GetComponent<PlayerRopeInteractor>());
             }
 
             resultScreen.Configure(flow, tracker);
@@ -1667,6 +1695,181 @@ namespace CargoStack.EditorTools
             // 에디터에서도 제자리를 잡아 둬야 씬 뷰와 프리뷰 캡처에서 구도를 확인할 수 있다.
             rig.ResetFraming();
             return camera;
+        }
+
+        private static RectTransform BuildTutorialMenuBadge()
+        {
+            Canvas canvas = CreateOverlayCanvas("Tutorial Badge UI", false);
+            Image badge = CreateUiImage(
+                "Tutorial Badge",
+                canvas.transform,
+                LoadUiSprite(TutorialBadgePath, 512));
+            RectTransform rect = badge.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(1f, 0.5f);
+            return rect;
+        }
+
+        private static void BuildTutorialGuide(
+            GameObject systems,
+            GameFlow flow,
+            PlayerCargoInteractor cargoInteractor,
+            PlayerRopeInteractor ropeInteractor)
+        {
+            Canvas canvas = CreateOverlayCanvas("Tutorial UI", true);
+            Sprite squareCheck = LoadUiSprite(TutorialCheckSquarePath, 256);
+            Sprite roundCheck = LoadUiSprite(TutorialCheckRoundPath, 256);
+
+            Image loadingPanel = CreateTutorialPanel(
+                "Loading Tutorial",
+                canvas.transform,
+                LoadUiSprite(TutorialPanelPath, 2048));
+            Image[] loadingChecks = CreateTutorialMarkers(
+                loadingPanel.rectTransform,
+                squareCheck,
+                new[] { 0.513f, 0.405f, 0.297f, 0.188f, 0.079f },
+                24f,
+                0.143f);
+            Image[] loadingProgress = CreateTutorialMarkers(
+                loadingPanel.rectTransform,
+                roundCheck,
+                new[] { 0.710f, 0.710f, 0.710f, 0.710f, 0.710f },
+                18f,
+                new[] { 0.143f, 0.322f, 0.500f, 0.678f, 0.857f });
+
+            Image drivingPanel = CreateTutorialPanel(
+                "Driving Tutorial",
+                canvas.transform,
+                LoadUiSprite(TutorialDrivingPanelPath, 2048));
+            Image[] drivingChecks = CreateTutorialMarkers(
+                drivingPanel.rectTransform,
+                squareCheck,
+                new[] { 0.624f, 0.508f, 0.392f, 0.276f, 0.173f },
+                24f,
+                0.144f);
+            Image[] drivingProgress = CreateTutorialMarkers(
+                drivingPanel.rectTransform,
+                roundCheck,
+                new[] { 0.716f, 0.716f, 0.716f, 0.716f, 0.716f },
+                18f,
+                new[] { 0.145f, 0.323f, 0.500f, 0.677f, 0.855f });
+
+            drivingPanel.gameObject.SetActive(false);
+            systems.AddComponent<TutorialGuide>().Configure(
+                flow,
+                cargoInteractor,
+                ropeInteractor,
+                loadingPanel.gameObject,
+                drivingPanel.gameObject,
+                loadingChecks,
+                loadingProgress,
+                drivingChecks,
+                drivingProgress);
+        }
+
+        private static Canvas CreateOverlayCanvas(string name, bool scaleWithScreen)
+        {
+            var holder = new GameObject(name);
+            Canvas canvas = holder.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = 20;
+
+            if (scaleWithScreen)
+            {
+                CanvasScaler scaler = holder.AddComponent<CanvasScaler>();
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                scaler.referenceResolution = new Vector2(1920f, 1080f);
+                scaler.matchWidthOrHeight = 0.5f;
+            }
+
+            return canvas;
+        }
+
+        private static Image CreateTutorialPanel(string name, Transform parent, Sprite sprite)
+        {
+            Image image = CreateUiImage(name, parent, sprite);
+            RectTransform rect = image.rectTransform;
+            rect.anchorMin = new Vector2(0f, 1f);
+            rect.anchorMax = new Vector2(0f, 1f);
+            rect.pivot = new Vector2(0f, 1f);
+            rect.anchoredPosition = new Vector2(18f, -18f);
+            rect.sizeDelta = new Vector2(310f, 414f);
+            return image;
+        }
+
+        private static Image[] CreateTutorialMarkers(
+            RectTransform parent,
+            Sprite sprite,
+            IReadOnlyList<float> yAnchors,
+            float size,
+            float xAnchor)
+        {
+            var xAnchors = new float[yAnchors.Count];
+            for (int index = 0; index < xAnchors.Length; index++)
+            {
+                xAnchors[index] = xAnchor;
+            }
+
+            return CreateTutorialMarkers(parent, sprite, yAnchors, size, xAnchors);
+        }
+
+        private static Image[] CreateTutorialMarkers(
+            RectTransform parent,
+            Sprite sprite,
+            IReadOnlyList<float> yAnchors,
+            float size,
+            IReadOnlyList<float> xAnchors)
+        {
+            var markers = new Image[yAnchors.Count];
+            for (int index = 0; index < markers.Length; index++)
+            {
+                Image marker = CreateUiImage($"Completed {index + 1}", parent, sprite);
+                RectTransform rect = marker.rectTransform;
+                rect.anchorMin = new Vector2(xAnchors[index], yAnchors[index]);
+                rect.anchorMax = rect.anchorMin;
+                rect.sizeDelta = new Vector2(size, size);
+                marker.enabled = false;
+                markers[index] = marker;
+            }
+
+            return markers;
+        }
+
+        private static Image CreateUiImage(string name, Transform parent, Sprite sprite)
+        {
+            var holder = new GameObject(name);
+            holder.transform.SetParent(parent, false);
+            Image image = holder.AddComponent<Image>();
+            image.sprite = sprite;
+            image.preserveAspect = true;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private static Sprite LoadUiSprite(string path, int maxSize)
+        {
+            if (AssetImporter.GetAtPath(path) is not TextureImporter importer)
+            {
+                throw new InvalidOperationException($"UI 이미지를 찾지 못했다: {path}");
+            }
+
+            if (importer.textureType != TextureImporterType.Sprite
+                || importer.mipmapEnabled
+                || !importer.alphaIsTransparency
+                || importer.maxTextureSize != maxSize)
+            {
+                importer.textureType = TextureImporterType.Sprite;
+                importer.spriteImportMode = SpriteImportMode.Single;
+                importer.mipmapEnabled = false;
+                importer.alphaIsTransparency = true;
+                importer.maxTextureSize = maxSize;
+                importer.textureCompression = TextureImporterCompression.Uncompressed;
+                importer.SaveAndReimport();
+            }
+
+            return AssetDatabase.LoadAssetAtPath<Sprite>(path)
+                ?? throw new InvalidOperationException($"UI 스프라이트를 불러오지 못했다: {path}");
         }
 
         private static void CreateLighting(bool winter)
