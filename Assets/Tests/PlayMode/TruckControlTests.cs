@@ -342,6 +342,51 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 언덕을_대각선으로_주행해도_접지가_끊기지_않는다()
+        {
+            yield return SceneManager.LoadSceneAsync("Stage03_HillsAndPits", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            GameObject.Find("Environment")?.SetActive(false);
+            GameObject.Find("RoadObstacles")?.SetActive(false);
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            flow.StartDriving();
+            float hillTimeout = 15f;
+            while (truck.transform.position.x < 101f && hillTimeout > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                hillTimeout -= Time.fixedDeltaTime;
+            }
+
+            Assert.That(truck.transform.position.x, Is.GreaterThanOrEqualTo(101f),
+                "언덕의 조향 검증 지점까지 도달하지 못했다");
+            truck.SetControlInputForTesting(1f, 0f, 1f);
+
+            float diagonalAngle = 0f;
+            float turnTimeout = 1f;
+            while (diagonalAngle < 45f && turnTimeout > 0f && truck.Speed > 0.01f)
+            {
+                yield return new WaitForFixedUpdate();
+                Vector3 heading = Vector3.ProjectOnPlane(truck.transform.right, Vector3.up).normalized;
+                diagonalAngle = Vector3.Angle(Vector3.right, heading);
+                turnTimeout -= Time.fixedDeltaTime;
+            }
+
+            Assert.That(diagonalAngle, Is.GreaterThanOrEqualTo(45f),
+                "언덕에서 대각선 자세를 만들기 전에 접지가 끊겼다");
+            Assert.That(truck.Speed, Is.GreaterThan(5f),
+                "장애물이 없는 언덕에서 접지 탐색 실패로 트럭이 멈췄다");
+            Debug.Log(
+                $"[CargoStack] 언덕 대각선 접지: 각도 {diagonalAngle:0.0}°, "
+                + $"속도 {truck.Speed:0.00}m/s, 진행도 {truck.Progress:0.00}");
+            truck.ClearControlInputForTesting();
+        }
+
+        [UnityTest]
         public IEnumerator 최고속도_60kmh가_실제_적용된다()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);

@@ -571,7 +571,8 @@ namespace CargoStack
                         routeRotation,
                         index,
                         groundMask,
-                        out groundContacts[index]))
+                        out groundContacts[index],
+                        probeWorldDown: true))
                 {
                     return false;
                 }
