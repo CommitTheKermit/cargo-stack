@@ -584,22 +584,24 @@ namespace CargoStack.EditorTools
                 Vector3 side = SideDirection(route, distance, route.TotalLength);
                 Vector3 along = TangentDirection(route, distance, route.TotalLength);
                 int sideSign = index % 2 == 0 ? -1 : 1;
-                float lateralDistance = 26f + (float)random.NextDouble() * 9f;
-                float forwardDistance = 16f + (float)random.NextDouble() * 8f;
-                Vector3 launchPosition = routePoint
+                float lateralDistance = 9f + (float)random.NextDouble() * 6f;
+                float forwardDistance = 5f + (float)random.NextDouble() * 7f;
+                Vector3 plantPosition = routePoint
                     + side * (sideSign * lateralDistance)
                     + along * forwardDistance;
-                launchPosition.y = routePoint.y + 7f + (float)random.NextDouble() * 3f;
+                plantPosition.y = routePoint.y;
 
                 GameObject hazard = new($"FlyingTree_{index:00}");
                 hazard.transform.SetParent(root, false);
-                hazard.transform.position = launchPosition;
+                hazard.transform.position = plantPosition;
 
                 GameObject model = trees[random.Next(trees.Length)];
                 var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
                 visual.name = "TreeVisual";
                 visual.transform.SetParent(hazard.transform, false);
                 float randomYaw = (float)random.NextDouble() * 360f;
+                // 대기 중에는 길가 여느 나무처럼 밑동을 땅에 박고 곧게 세워 둔다.
+                // 발사 전까지 눕히지 않는다. 눕히는 것은 FlyingTreeHazard가 비행 중에 한다.
                 visual.transform.SetLocalPositionAndRotation(
                     Vector3.zero,
                     Quaternion.Euler(0f, randomYaw, 0f));
@@ -615,18 +617,21 @@ namespace CargoStack.EditorTools
                 {
                     float targetHeight = Mathf.Lerp(4.8f, 6.2f, (float)random.NextDouble());
                     visual.transform.localScale *= targetHeight / bounds.size.y;
+                    bounds = GetRendererBounds(visual);
                 }
 
-                // 원본 나무의 높이(+Y)를 비행 중인 나무의 앞(+Z)으로 눕힌다.
-                // 높이 정규화는 회전 전에 해야 모델마다 길이가 달라지지 않는다.
-                visual.transform.localRotation = Quaternion.Euler(90f, randomYaw, 0f);
+                // 밑동을 지면보다 살짝 아래로 내려, 땅에 박혀 서 있는 것처럼 보이게 한다.
+                const float embedDepth = 0.4f;
+                visual.transform.position +=
+                    Vector3.up * ((plantPosition.y - embedDepth) - bounds.min.y);
                 bounds = GetRendererBounds(visual);
 
+                // 트렁크(Y)를 따라 세운 캡슐. 비행 중 몸통이 눕으면 콜라이더도 함께 눕는다.
                 CapsuleCollider hitbox = hazard.AddComponent<CapsuleCollider>();
-                hitbox.direction = 2;
+                hitbox.direction = 1;
                 hitbox.center = hazard.transform.InverseTransformPoint(bounds.center);
-                hitbox.radius = Mathf.Max(0.45f, Mathf.Min(bounds.extents.x, bounds.extents.y) * 0.72f);
-                hitbox.height = Mathf.Max(hitbox.radius * 2f, bounds.size.z * 0.9f);
+                hitbox.radius = Mathf.Max(0.4f, Mathf.Min(bounds.extents.x, bounds.extents.z) * 0.7f);
+                hitbox.height = Mathf.Max(hitbox.radius * 2f, bounds.size.y * 0.9f);
 
                 Rigidbody body = hazard.AddComponent<Rigidbody>();
                 body.mass = 180f;
@@ -639,14 +644,14 @@ namespace CargoStack.EditorTools
                     launchProgress,
                     impactProgress,
                     1 << groundLayer,
-                    Mathf.Lerp(0.9f, 1.25f, (float)random.NextDouble()),
+                    Mathf.Lerp(2.1f, 2.9f, (float)random.NextDouble()),
                     Mathf.Lerp(900f, 1250f, (float)random.NextDouble()),
                     Mathf.Lerp(25f, 36f, (float)random.NextDouble()));
             }
 
             Debug.Log(
                 $"[CargoStack] 폭발 비행 나무 배치 완료: {count}그루 "
-                + "(차량보다 10% 진행도 앞서, 원거리 좌우 교차 발사)");
+                + "(길가에 밑동 박고 대기하다 로켓처럼 발사)");
             return root.gameObject;
         }
 

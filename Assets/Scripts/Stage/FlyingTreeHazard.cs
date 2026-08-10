@@ -3,9 +3,10 @@ using UnityEngine;
 namespace CargoStack
 {
     /// <summary>
-    /// 트럭보다 앞선 시점에 원거리 발사점에서 트럭의 예상 위치를 향해 포물선으로
-    /// 날아가는 나무 위험물. 비행 방향을 앞쪽으로 정렬하고 지면·트럭·적재 화물에
-    /// 닿으면 폭발해 주변 강체와 차량을 실제로 밀어낸다.
+    /// 처음에는 길가 땅에 밑동을 박고 곧게 선 나무. 트럭이 다가오면 밑동에서 로켓처럼
+    /// 불을 뿜으며 솟아, 트럭의 예상 위치를 향해 천천히 날아간다. 몸통이 진행 방향으로
+    /// 눕고 밑동(불꽃)이 뒤로 끌린다. 지면·트럭·적재 화물에 닿으면 폭발해 주변 강체와
+    /// 차량을 실제로 밀어낸다.
     /// </summary>
     [RequireComponent(typeof(Rigidbody), typeof(CapsuleCollider))]
     public sealed class FlyingTreeHazard : MonoBehaviour
@@ -17,10 +18,14 @@ namespace CargoStack
             Exploded,
         }
 
+        // 발사 직후 밑동이 심겼던 지면과 스치며 곧바로 폭발하지 않도록, 이 시간 동안은
+        // 지면 충돌만 무시한다. 트럭·화물 충돌은 유예 없이 즉시 폭발시킨다.
+        private const float GroundGraceSeconds = 0.25f;
+
         [SerializeField] private TruckMover target;
         [SerializeField, Range(0f, 1f)] private float triggerProgress = 0.2f;
         [SerializeField, Range(0f, 1f)] private float impactProgress = 0.3f;
-        [SerializeField, Min(0.2f)] private float attackFlightTime = 1.5f;
+        [SerializeField, Min(0.2f)] private float attackFlightTime = 2.4f;
         [SerializeField, Min(0f)] private float targetLeadDistance = 8f;
         [SerializeField, Min(0.1f)] private float explosionRadius = 5.5f;
         [SerializeField, Min(0f)] private float explosionForce = 1050f;
@@ -31,6 +36,9 @@ namespace CargoStack
         private Collider hitbox;
         private Renderer[] renderers;
         private FlightPhase phase;
+        private ParticleSystem rocketFire;
+        private Light rocketGlow;
+        private float launchTime;
 
         public float TriggerProgress => triggerProgress;
         public float ImpactProgress => impactProgress;
@@ -47,6 +55,7 @@ namespace CargoStack
             body.useGravity = false;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            BuildRocketFire();
         }
 
         private void Update()
@@ -69,9 +78,9 @@ namespace CargoStack
             Vector3 velocity = body.linearVelocity;
             if (velocity.sqrMagnitude > 0.25f)
             {
-                // 나무의 로컬 앞(+Z)을 실제 비행 속도에 맞춘다. 공중에 떠서 옆으로
-                // 미끄러지는 대신, 몸통이 먼저 향하는 미사일 같은 궤적을 만든다.
-                body.MoveRotation(Quaternion.LookRotation(velocity.normalized, Vector3.up));
+                // 곧게 선 나무의 몸통(+Y)을 실제 비행 속도에 맞춰 눕힌다. 밑동(-Y, 불꽃)이
+                // 뒤로 끌리는 로켓 궤적이 된다.
+                body.MoveRotation(Quaternion.FromToRotation(Vector3.up, velocity.normalized));
             }
         }
 
@@ -82,12 +91,25 @@ namespace CargoStack
                 return;
             }
 
-            if (IsExplosionTarget(collision.collider))
+            if (!IsExplosionTarget(collision.collider))
             {
-                TruckMover truck = collision.collider.GetComponentInParent<TruckMover>();
-                truck?.ReceiveExplosionImpulse(transform.position, truckLaunchImpulse, explosionRadius);
-                Explode();
+                return;
             }
+
+            // 발사 직후에는 밑동이 심겼던 지면과 스칠 수 있다. 그 순간의 지면 충돌은
+            // 무시하고, 트럭·화물이거나 유예가 끝난 뒤의 지면 충돌에만 폭발한다.
+            bool isGround = (groundMask.value & (1 << collision.collider.gameObject.layer)) != 0;
+            bool hitVehicleOrCargo =
+                collision.collider.GetComponentInParent<TruckMover>() != null
+                || collision.collider.GetComponentInParent<Cargo>() != null;
+            if (isGround && !hitVehicleOrCargo && Time.time - launchTime < GroundGraceSeconds)
+            {
+                return;
+            }
+
+            TruckMover truck = collision.collider.GetComponentInParent<TruckMover>();
+            truck?.ReceiveExplosionImpulse(transform.position, truckLaunchImpulse, explosionRadius);
+            Explode();
         }
 
         public void Configure(
@@ -139,6 +161,7 @@ namespace CargoStack
             }
 
             phase = FlightPhase.Attacking;
+            launchTime = Time.time;
             body.isKinematic = false;
             body.useGravity = true;
 
@@ -151,8 +174,10 @@ namespace CargoStack
             body.angularVelocity = Vector3.zero;
             if (LaunchVelocity.sqrMagnitude > 0.25f)
             {
-                body.rotation = Quaternion.LookRotation(LaunchVelocity.normalized, Vector3.up);
+                body.rotation = Quaternion.FromToRotation(Vector3.up, LaunchVelocity.normalized);
             }
+
+            IgniteRocketFire();
         }
 
         private Vector3 GetTargetPosition()
@@ -205,6 +230,7 @@ namespace CargoStack
             truckTarget?.ReceiveExplosionImpulse(center, truckLaunchImpulse, explosionRadius);
 
             FlyingTreeExplosionPulse.Create(center, explosionRadius);
+            ExtinguishRocketFire();
             body.linearVelocity = Vector3.zero;
             body.angularVelocity = Vector3.zero;
             body.isKinematic = true;
@@ -215,6 +241,108 @@ namespace CargoStack
             }
 
             Destroy(gameObject, 0.3f);
+        }
+
+        /// <summary>밑동(-Y)에서 뒤로 뿜는 로켓 화염을 절차적으로 만든다. 대기 중에는 꺼 둔다.</summary>
+        private void BuildRocketFire()
+        {
+            var fireObject = new GameObject("RocketFire");
+            fireObject.transform.SetParent(transform, false);
+            // 나무 로컬 밑동(-Y)에서, 화염이 -Y 방향(뒤)으로 뿜어 나가도록 콘을 눕힌다.
+            fireObject.transform.SetLocalPositionAndRotation(
+                new Vector3(0f, 0.1f, 0f),
+                Quaternion.Euler(90f, 0f, 0f));
+
+            rocketFire = fireObject.AddComponent<ParticleSystem>();
+            rocketFire.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            ParticleSystem.MainModule main = rocketFire.main;
+            main.loop = true;
+            main.playOnAwake = false;
+            main.duration = 1f;
+            main.startLifetime = 0.32f;
+            main.startSpeed = 7.5f;
+            main.startSize = 1.05f;
+            main.startColor = new ParticleSystem.MinMaxGradient(
+                new Color(1f, 0.85f, 0.25f),
+                new Color(1f, 0.35f, 0.05f));
+            main.gravityModifier = -0.1f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 120;
+
+            ParticleSystem.EmissionModule emission = rocketFire.emission;
+            emission.rateOverTime = 90f;
+
+            ParticleSystem.ShapeModule shape = rocketFire.shape;
+            shape.shapeType = ParticleSystemShapeType.Cone;
+            shape.angle = 11f;
+            shape.radius = 0.28f;
+
+            ParticleSystem.SizeOverLifetimeModule sizeOverLifetime = rocketFire.sizeOverLifetime;
+            sizeOverLifetime.enabled = true;
+            sizeOverLifetime.size = new ParticleSystem.MinMaxCurve(
+                1f,
+                AnimationCurve.Linear(0f, 1f, 1f, 0f));
+
+            ParticleSystem.ColorOverLifetimeModule colorOverLifetime = rocketFire.colorOverLifetime;
+            colorOverLifetime.enabled = true;
+            var gradient = new Gradient();
+            gradient.SetKeys(
+                new[]
+                {
+                    new GradientColorKey(new Color(1f, 0.9f, 0.4f), 0f),
+                    new GradientColorKey(new Color(1f, 0.4f, 0.05f), 0.5f),
+                    new GradientColorKey(new Color(0.25f, 0.05f, 0.02f), 1f),
+                },
+                new[]
+                {
+                    new GradientAlphaKey(1f, 0f),
+                    new GradientAlphaKey(0.8f, 0.4f),
+                    new GradientAlphaKey(0f, 1f),
+                });
+            colorOverLifetime.color = gradient;
+
+            var renderer = fireObject.GetComponent<ParticleSystemRenderer>();
+            Shader fireShader = Shader.Find("Legacy Shaders/Particles/Additive")
+                ?? Shader.Find("Particles/Standard Unlit")
+                ?? Shader.Find("Sprites/Default");
+            if (fireShader != null)
+            {
+                renderer.material = new Material(fireShader);
+            }
+
+            // 밑동 글로우. 비행 중에만 켜서 로켓 분사처럼 주변을 물들인다.
+            rocketGlow = fireObject.AddComponent<Light>();
+            rocketGlow.type = LightType.Point;
+            rocketGlow.color = new Color(1f, 0.45f, 0.12f);
+            rocketGlow.range = 6f;
+            rocketGlow.intensity = 0f;
+        }
+
+        private void IgniteRocketFire()
+        {
+            if (rocketFire != null)
+            {
+                rocketFire.Play(true);
+            }
+
+            if (rocketGlow != null)
+            {
+                rocketGlow.intensity = 4.5f;
+            }
+        }
+
+        private void ExtinguishRocketFire()
+        {
+            if (rocketFire != null)
+            {
+                rocketFire.Stop(true, ParticleSystemStopBehavior.StopEmitting);
+            }
+
+            if (rocketGlow != null)
+            {
+                rocketGlow.intensity = 0f;
+            }
         }
     }
 
