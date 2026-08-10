@@ -5,10 +5,10 @@ using UnityEngine.SceneManagement;
 namespace CargoStack
 {
     /// <summary>
-    /// 메인 메뉴. 배경에는 게임플레이 녹화 영상이 흐르고(어두운 필터를 덮어 글씨가 읽히게 한다),
+    /// 메인 메뉴. 배경에는 실시간 적재·주행 데모가 흐르고(어두운 필터를 덮어 글씨가 읽히게 한다),
     /// 그 위에 왼쪽 정렬한 미니멀한 스테이지 목록을 얹는다.
     /// 목록은 마우스를 올린 항목 앞에 "&gt;" 커서가 붙고, 클릭하면 그 스테이지로 들어간다.
-    /// 배경 영상 재생은 씬 빌더가 붙이는 VideoPlayer 가 맡고, 이 스크립트는 필터와 글자만 그린다.
+    /// 배경 데모는 MenuBackgroundDemo가 맡고, 이 스크립트는 필터와 글자만 그린다.
     /// </summary>
     [DisallowMultipleComponent]
     public sealed class MainMenuController : MonoBehaviour
@@ -18,7 +18,7 @@ namespace CargoStack
         [SerializeField] private Font titleFont;
         [SerializeField] private Font bodyFont;
 
-        [Tooltip("배경 영상을 덮는 검은 필터의 진하기(0~1). 클수록 어두워져 글씨가 잘 읽힌다.")]
+        [Tooltip("배경 데모를 덮는 검은 필터의 진하기(0~1). 클수록 어두워져 글씨가 잘 읽힌다.")]
         [SerializeField, Range(0f, 1f)] private float overlayOpacity = 0.55f;
 
         private GUIStyle titleStyle;
@@ -75,7 +75,7 @@ namespace CargoStack
         {
             EnsureStyles();
 
-            // 배경 영상을 어둡게 덮어 글씨가 읽히게 한다.
+            // 배경 데모를 어둡게 덮어 글씨가 읽히게 한다.
             GUI.color = new Color(0f, 0f, 0f, overlayOpacity);
             GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), overlayTexture);
             GUI.color = Color.white;

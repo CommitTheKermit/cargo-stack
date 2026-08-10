@@ -52,6 +52,7 @@ namespace CargoStack
 
         /// <summary>지금 화면에 떠 있는 별 개수(연출이 끝난 것 기준). 테스트가 이 값을 본다.</summary>
         public int AwardedStars => awardedStars;
+        public Font UiFont => Resources.Load<Font>("Pretendard-Regular");
 
         public void Configure(GameFlow gameFlow, CargoTracker cargoTracker)
         {
@@ -268,16 +269,19 @@ namespace CargoStack
 
             titleStyle = new GUIStyle
             {
+                font = UiFont,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = white },
             };
             summaryStyle = new GUIStyle
             {
+                font = UiFont,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = dim },
             };
             buttonStyle = new GUIStyle(GUI.skin.button)
             {
+                font = UiFont,
                 alignment = TextAnchor.MiddleCenter,
             };
         }

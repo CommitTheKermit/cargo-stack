@@ -20,6 +20,94 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 모든_스테이지의_충돌_대상_월드_애셋에는_메시_콜라이더가_있다()
+        {
+            string[] sceneNames =
+            {
+                "Prototype",
+                "Stage01_Tutorial",
+                "Stage02_SpeedBumps",
+                "Stage03_HillsAndPits",
+                "Stage04_ComplexRoute",
+                "Stage05_Winter",
+                "Stage06_FrozenCargo",
+                "Stage07_HardBumps",
+            };
+
+            foreach (string sceneName in sceneNames)
+            {
+                yield return SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
+
+                GameObject environment = GameObject.Find("Environment");
+                Assert.NotNull(environment, $"{sceneName}: Environment가 없다");
+
+                int obstacleCount = 0;
+                int colliderCount = 0;
+                foreach (string containerName in new[] { "Trees", "Rocks" })
+                {
+                    Transform container = environment.transform.Find(containerName);
+                    Assert.NotNull(container, $"{sceneName}: {containerName} 컨테이너가 없다");
+                    Assert.That(container.childCount, Is.GreaterThan(0),
+                        $"{sceneName}: {containerName}가 비어 있다");
+
+                    foreach (Transform obstacle in container)
+                    {
+                        MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
+                        Assert.That(colliders.Length, Is.GreaterThan(0),
+                            $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                        foreach (MeshCollider collider in colliders)
+                        {
+                            Assert.IsFalse(collider.isTrigger,
+                                $"{sceneName}: {obstacle.name}의 콜라이더가 Trigger다");
+                            Assert.NotNull(collider.sharedMesh,
+                                $"{sceneName}: {obstacle.name}의 콜라이더 메시가 비어 있다");
+                        }
+
+                        obstacleCount++;
+                        colliderCount += colliders.Length;
+                    }
+                }
+
+                if (sceneName == "Stage05_Winter" || sceneName == "Stage06_FrozenCargo")
+                {
+                    foreach (string containerName in new[] { "Snowmen", "IcePlatforms" })
+                    {
+                        Transform container = environment.transform.Find(containerName);
+                        Assert.NotNull(container, $"{sceneName}: {containerName} 컨테이너가 없다");
+                        foreach (Transform obstacle in container)
+                        {
+                            MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
+                            Assert.That(colliders.Length, Is.GreaterThan(0),
+                                $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                            obstacleCount++;
+                            colliderCount += colliders.Length;
+                        }
+                    }
+
+                    Transform landmarks = environment.transform.Find("IceLandmarks");
+                    Assert.NotNull(landmarks, $"{sceneName}: IceLandmarks 컨테이너가 없다");
+                    foreach (Transform obstacle in landmarks)
+                    {
+                        if (!obstacle.name.Contains("IceMountain"))
+                        {
+                            continue;
+                        }
+
+                        MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
+                        Assert.That(colliders.Length, Is.GreaterThan(0),
+                            $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                        obstacleCount++;
+                        colliderCount += colliders.Length;
+                    }
+                }
+
+                Debug.Log(
+                    $"[CargoStack] {sceneName} 월드 충돌체: "
+                    + $"충돌 애셋 {obstacleCount}개, MeshCollider {colliderCount}개");
+            }
+        }
+
+        [UnityTest]
         public IEnumerator 튜토리얼_스테이지는_정의한_구성으로_생성된다()
         {
             yield return SceneManager.LoadSceneAsync(

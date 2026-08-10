@@ -18,8 +18,9 @@ namespace CargoStack
         [SerializeField] private PhysicsMaterial bedMaterial;
         [SerializeField] private PhysicsMaterial cargoMaterial;
         [SerializeField] private PlayerRopeInteractor ropeInteractor;
-
         private GUIStyle labelStyle;
+
+        public Font UiFont => Resources.Load<Font>("Pretendard-Regular");
 
         private void Update()
         {
@@ -36,7 +37,11 @@ namespace CargoStack
 
         private void OnGUI()
         {
-            labelStyle ??= new GUIStyle(GUI.skin.label) { fontSize = 15 };
+            labelStyle ??= new GUIStyle(GUI.skin.label)
+            {
+                font = UiFont,
+                fontSize = 15,
+            };
 
             GUILayout.BeginArea(new Rect(16f, 16f, 340f, 330f), GUI.skin.box);
 
