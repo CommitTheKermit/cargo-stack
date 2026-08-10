@@ -16,7 +16,7 @@ MonoBehaviour:
   sceneName: Stage08_FlyingTrees
   theme: 0
   showInMenu: 1
-  displayName: Stage 8 · 폭발 수목 지대
+  displayName: Special · 폭발 수목 지대
   menuDescription: 원거리에서 날아오는 나무 6그루 · 충돌 시 폭발 · 화물 7개
   routeControlPoints:
   - {x: 0, y: 0, z: 0}
