@@ -177,6 +177,7 @@ namespace CargoStack.Tests
         private IEnumerator DriveToResult(System.Action<DriveMetrics> completed)
         {
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
 
             float remaining = DriveTimeoutSeconds;

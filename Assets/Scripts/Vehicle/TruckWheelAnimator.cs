@@ -5,6 +5,7 @@ namespace CargoStack
 {
     /// <summary>
     /// 키네마틱 트럭의 실제 프레임 간 이동량으로 원본 바퀴 메시를 굴리고,
+    /// 앞바퀴 두 개는 TruckMover가 계산한 조향각만큼 좌우로 돌린다.
     /// 각 바퀴 아래 지면 높이를 따라 시각 서스펜션을 압축·복원한다.
     /// 주행 물리는 기존 TruckMover가 전담하며 이 컴포넌트는 시각물만 움직인다.
     /// </summary>
@@ -22,9 +23,13 @@ namespace CargoStack
         [SerializeField] private LayerMask groundMask;
 
         private Vector3[] restLocalPositions;
+        private Quaternion[] restLocalRotations;
         private float[] suspensionVelocities;
         private Vector3 previousPosition;
+        private Vector3 previousForward;
         private float spinAngleDegrees;
+        private float totalSpinDegrees;
+        private float frontSteeringAngleDegrees;
         private bool initialized;
 
         public int WheelCount => suspensionRoots?.Length ?? 0;
@@ -32,6 +37,8 @@ namespace CargoStack
         public float CompressionTravel => compressionTravel;
         public float DroopTravel => droopTravel;
         public float SpinAngleDegrees => spinAngleDegrees;
+        public float TotalSpinDegrees => totalSpinDegrees;
+        public float FrontSteeringAngleDegrees => frontSteeringAngleDegrees;
 
         public Transform GetSuspensionRoot(int index) => suspensionRoots[index];
         public Transform GetSpinRoot(int index) => spinRoots[index];
@@ -58,6 +65,11 @@ namespace CargoStack
             InitializeState();
         }
 
+        public void SetFrontSteeringAngle(float angleDegrees)
+        {
+            frontSteeringAngleDegrees = angleDegrees;
+        }
+
         private void Awake()
         {
             InitializeState();
@@ -66,6 +78,7 @@ namespace CargoStack
         private void OnEnable()
         {
             previousPosition = transform.position;
+            previousForward = transform.right;
             initialized = true;
         }
 
@@ -83,8 +96,10 @@ namespace CargoStack
             }
 
             UpdateSpin();
+            UpdateSteering();
             UpdateSuspension(Time.deltaTime);
             previousPosition = transform.position;
+            previousForward = transform.right;
         }
 
         private void InitializeState()
@@ -97,13 +112,16 @@ namespace CargoStack
             }
 
             restLocalPositions = new Vector3[4];
+            restLocalRotations = new Quaternion[4];
             suspensionVelocities = new float[4];
             for (int index = 0; index < 4; index++)
             {
                 restLocalPositions[index] = suspensionRoots[index].localPosition;
+                restLocalRotations[index] = suspensionRoots[index].localRotation;
             }
 
             previousPosition = transform.position;
+            previousForward = transform.right;
             initialized = true;
         }
 
@@ -115,15 +133,28 @@ namespace CargoStack
                 return;
             }
 
-            float forwardDistance = Vector3.Dot(displacement, transform.right);
-            spinAngleDegrees -= forwardDistance / wheelRadius * Mathf.Rad2Deg;
-            spinAngleDegrees = Mathf.Repeat(spinAngleDegrees + 180f, 360f) - 180f;
+            Vector3 rollingDirection = previousForward + transform.right;
+            rollingDirection = rollingDirection.sqrMagnitude > 1e-5f
+                ? rollingDirection.normalized
+                : transform.right;
+            float forwardDistance = Vector3.Dot(displacement, rollingDirection);
+            totalSpinDegrees -= forwardDistance / wheelRadius * Mathf.Rad2Deg;
+            spinAngleDegrees = Mathf.Repeat(totalSpinDegrees + 180f, 360f) - 180f;
 
             Quaternion spin = Quaternion.AngleAxis(spinAngleDegrees, Vector3.forward);
             foreach (Transform spinRoot in spinRoots)
             {
                 spinRoot.localRotation = spin;
             }
+        }
+
+        private void UpdateSteering()
+        {
+            Quaternion steering = Quaternion.AngleAxis(frontSteeringAngleDegrees, Vector3.up);
+            suspensionRoots[0].localRotation = restLocalRotations[0] * steering;
+            suspensionRoots[1].localRotation = restLocalRotations[1] * steering;
+            suspensionRoots[2].localRotation = restLocalRotations[2];
+            suspensionRoots[3].localRotation = restLocalRotations[3];
         }
 
         private void UpdateSuspension(float deltaTime)

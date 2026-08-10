@@ -14,6 +14,7 @@ namespace CargoStack
     {
         [SerializeField] private GameFlow flow;
         [SerializeField] private CargoTracker tracker;
+        [SerializeField] private TruckMover truck;
         [SerializeField] private PhysicsMaterial bedMaterial;
         [SerializeField] private PhysicsMaterial cargoMaterial;
         [SerializeField] private PlayerRopeInteractor ropeInteractor;
@@ -61,6 +62,18 @@ namespace CargoStack
                     GUILayout.Label("반대쪽 끝을 조준하고 R (X 로 취소)", labelStyle);
                 }
             }
+            else if (flow.State == GameState.Driving)
+            {
+                GUILayout.Label("W/↑ 전진   S/↓ 후진   A/D 앞바퀴 조향", labelStyle);
+                if (truck != null)
+                {
+                    string direction = truck.Speed < -0.05f ? "후진 " : string.Empty;
+                    GUILayout.Label($"속도: {direction}{Mathf.Abs(truck.Speed) * 3.6f:0} km/h", labelStyle);
+                }
+
+                GUILayout.Label("좌클릭 드래그 시점 회전   휠 확대·축소", labelStyle);
+                GUILayout.Label("Backspace 재시작   Esc 스테이지 선택", labelStyle);
+            }
             else
             {
                 GUILayout.Label("좌클릭 드래그 시점 회전   휠 확대·축소", labelStyle);
@@ -100,7 +113,7 @@ namespace CargoStack
             return flow.State switch
             {
                 GameState.Loading => "적재 (짐을 쌓고 Enter)",
-                GameState.Driving => "주행 중",
+                GameState.Driving => "직접 주행 중",
                 GameState.Result => $"도착 - 별 {tracker.StarRating}/3 ({tracker.DroppedCount}개 분실)",
                 _ => flow.State.ToString(),
             };
