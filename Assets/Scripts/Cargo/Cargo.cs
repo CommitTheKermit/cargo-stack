@@ -15,6 +15,16 @@ namespace CargoStack
     {
         private Rigidbody body;
 
+        private void Awake()
+        {
+            int cargoLayer = LayerMask.NameToLayer("Cargo");
+            int obstacleLayer = LayerMask.NameToLayer("Obstacle");
+            if (cargoLayer >= 0 && obstacleLayer >= 0)
+            {
+                Physics.IgnoreLayerCollision(cargoLayer, obstacleLayer, true);
+            }
+        }
+
         public Rigidbody Body
         {
             get

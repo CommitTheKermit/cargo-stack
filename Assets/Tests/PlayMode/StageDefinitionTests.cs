@@ -781,12 +781,38 @@ namespace CargoStack.Tests
                     $"{scenes[index]} 장애물 수가 난이도 단계와 다르다");
                 foreach (Transform obstacle in obstacles.transform)
                 {
-                    BoxCollider collider = obstacle.GetComponent<BoxCollider>();
-                    Assert.NotNull(collider, $"{obstacle.name}에 차량 충돌체가 없다");
-                    Assert.IsTrue(collider.isTrigger,
-                        $"{obstacle.name}가 화물 물리에 직접 간섭한다");
+                    Assert.IsNull(obstacle.GetComponent<BoxCollider>(),
+                        $"{obstacle.name}에 실제 메시보다 큰 박스 충돌체가 남아 있다");
                     Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), obstacle.gameObject.layer);
+
+                    MeshFilter[] meshFilters = obstacle.GetComponentsInChildren<MeshFilter>(true);
+                    Assert.That(meshFilters.Length, Is.GreaterThan(0),
+                        $"{obstacle.name}에 장애물 메시가 없다");
+                    foreach (MeshFilter meshFilter in meshFilters)
+                    {
+                        if (meshFilter.sharedMesh == null)
+                        {
+                            continue;
+                        }
+
+                        MeshCollider collider = meshFilter.GetComponent<MeshCollider>();
+                        Assert.NotNull(collider, $"{meshFilter.name}에 메시 충돌체가 없다");
+                        Assert.IsFalse(collider.isTrigger, $"{meshFilter.name}가 Trigger다");
+                        Assert.AreSame(meshFilter.sharedMesh, collider.sharedMesh,
+                            $"{meshFilter.name}의 시각 메시와 충돌 메시가 다르다");
+                        Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), collider.gameObject.layer);
+                    }
                 }
+
+                int cargoLayer = LayerMask.NameToLayer("Cargo");
+                int obstacleLayer = LayerMask.NameToLayer("Obstacle");
+                foreach (Cargo item in Object.FindObjectsByType<Cargo>(FindObjectsSortMode.None))
+                {
+                    Assert.AreEqual(cargoLayer, item.gameObject.layer,
+                        $"{item.name}가 Cargo 레이어가 아니다");
+                }
+                Assert.IsTrue(Physics.GetIgnoreLayerCollision(cargoLayer, obstacleLayer),
+                    "화물과 장애물 레이어가 서로 충돌한다");
             }
 
             Debug.Log("[CargoStack] 도로 장애물: Stage01=0, Stage02~07=2/3/4/5/6/7개");
