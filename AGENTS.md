@@ -6,45 +6,14 @@
 **여러 도구가 동시에 이 저장소를 만진다.** 원격에 `codex/*` 브랜치와 `feat/*` 브랜치가
 함께 있는 것이 그 흔적이다. 아래 규칙은 대부분 그 동시성 때문에 필요하다.
 
-## 1. 새 작업은 worktree 에서 시작한다 (필수)
-
-작업 트리를 공유하면 사고가 난다. 실제로 한 세션에서 세 번 섞였다.
-오디오 작업, 짐칸 뒷문 작업, 트럭 FBX 편집이 로프 작업 브랜치로 딸려 들어왔다.
-
-원인은 두 가지다.
-
-- `git checkout -b` 는 **미커밋 변경을 그대로 데리고** 브랜치를 옮긴다. 남이 작업 중인
-  파일이 내 브랜치에 얹힌다.
-- 이 프로젝트의 씬은 재생성물이다. `PrototypeSceneBuilder` 가 씬을 다시 만들면 그 시점
-  작업 트리에 있는 **모든** 변경이 씬 파일에 함께 구워진다. 분리할 방법이 없다.
-
-그래서 브랜치만 나누는 것으로는 부족하고, 디렉토리를 나눠야 한다.
-
-```bash
-git worktree add ../cargo-stack-<작업이름> -b feat/<작업이름> origin/main
-
-# Unity Library 는 .gitignore 대상이라 worktree 마다 새로 만들어진다(현재 약 184MB).
-# 기존 것을 복사해 두면 첫 임포트가 짧아진다.
-cp -R Library ../cargo-stack-<작업이름>/Library
-```
-
-Claude Code 는 `EnterWorktree` 도구로 `.claude/worktrees/` 아래에 만든다.
-
-작업을 마치면 정리한다.
-
-```bash
-git worktree remove ../cargo-stack-<작업이름>
-```
-
 ## 2. 착수 전에 작업 트리가 깨끗한지 확인한다
 
-worktree 를 쓰지 못하는 상황이라면 최소한 이것만은 지킨다.
-
 ```bash
-git status --short
+git status --short --untracked-files=no
 ```
 
-**남의 미커밋 변경이 보이면 거기서 멈추고 사용자에게 알린다.** 그대로 진행해서 커밋에
+untracked 파일은 무시한다. **추적 중인 파일에서 남의 미커밋 변경이 보이면 거기서 멈추고
+사용자에게 알린다.** 그대로 진행해서 커밋에
 섞은 뒤에 분리하려면 `git stash push -- <파일>` 로 내 변경만 빼내고 씬을 다시 만들어야
 하는데, 이 작업은 번거롭고 실수하면 남의 작업이 사라진다.
 
