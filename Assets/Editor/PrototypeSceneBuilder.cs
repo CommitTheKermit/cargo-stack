@@ -347,6 +347,7 @@ namespace CargoStack.EditorTools
                 goalDistance,
                 obstacleLayer,
                 isWinter);
+            BuildGoalMarker(route, goalDistance);
 
             CreateLighting(isWinter);
 
@@ -549,6 +550,58 @@ namespace CargoStack.EditorTools
             Debug.Log(
                 $"[CargoStack] {definition.StageId} 도로 장애물: {count}개, "
                 + $"중심 오프셋 {lateralOffset:0.0}m");
+        }
+
+        private static void BuildGoalMarker(RoutePath route, float goalDistance)
+        {
+            Vector3 heading = route.PositionAt(goalDistance + 1f)
+                - route.PositionAt(goalDistance - 1f);
+            heading.y = 0f;
+
+            var goal = new GameObject("Goal Marker") { tag = "Finish", isStatic = true };
+            goal.transform.SetPositionAndRotation(
+                route.PositionAt(goalDistance),
+                Quaternion.LookRotation(heading.normalized, Vector3.up));
+
+            BoxCollider trigger = goal.AddComponent<BoxCollider>();
+            trigger.isTrigger = true;
+            trigger.center = new Vector3(0f, 1.5f, 0f);
+            trigger.size = new Vector3(RoadWidth, 4.5f, 0.8f);
+
+            Material material = EnsureColorMaterial(
+                "GoalMarker",
+                new Color(1f, 0.38f, 0.04f));
+            material.EnableKeyword("_EMISSION");
+            material.SetColor("_EmissionColor", new Color(0.65f, 0.12f, 0.01f));
+            EditorUtility.SetDirty(material);
+
+            AddGoalArrowPart(goal.transform, "Shaft", new Vector3(0f, 5f, 0f),
+                new Vector3(0.7f, 2.2f, 0.7f), Quaternion.identity, material);
+            AddGoalArrowPart(goal.transform, "Head Left", new Vector3(-0.65f, 3.45f, 0f),
+                new Vector3(0.55f, 1.8f, 0.7f), Quaternion.Euler(0f, 0f, 45f), material);
+            AddGoalArrowPart(goal.transform, "Head Right", new Vector3(0.65f, 3.45f, 0f),
+                new Vector3(0.55f, 1.8f, 0.7f), Quaternion.Euler(0f, 0f, -45f), material);
+            AddGoalArrowPart(goal.transform, "Head Front", new Vector3(0f, 3.45f, -0.65f),
+                new Vector3(0.7f, 1.8f, 0.55f), Quaternion.Euler(-45f, 0f, 0f), material);
+            AddGoalArrowPart(goal.transform, "Head Back", new Vector3(0f, 3.45f, 0.65f),
+                new Vector3(0.7f, 1.8f, 0.55f), Quaternion.Euler(45f, 0f, 0f), material);
+        }
+
+        private static void AddGoalArrowPart(
+            Transform parent,
+            string name,
+            Vector3 localPosition,
+            Vector3 localScale,
+            Quaternion localRotation,
+            Material material)
+        {
+            GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.name = name;
+            part.transform.SetParent(parent, false);
+            part.transform.SetLocalPositionAndRotation(localPosition, localRotation);
+            part.transform.localScale = localScale;
+            part.GetComponent<Renderer>().sharedMaterial = material;
+            Object.DestroyImmediate(part.GetComponent<Collider>());
         }
 
         private static Bounds LocalRendererBounds(Transform root)

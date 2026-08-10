@@ -1034,8 +1034,17 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 출발하면_도착_지점까지_주행하고_결과_상태가_된다()
+        public IEnumerator 출발하면_화살표_도착_지점에_닿아_결과_상태가_된다()
         {
+            GameObject goal = GameObject.Find("Goal Marker");
+            Assert.NotNull(goal, "화살표 도착 표식이 없다");
+            Assert.IsTrue(goal.CompareTag("Finish"), "도착 표식에 Finish 태그가 없다");
+            BoxCollider goalTrigger = goal.GetComponent<BoxCollider>();
+            Assert.NotNull(goalTrigger, "도착 표식에 트리거가 없다");
+            Assert.IsTrue(goalTrigger.isTrigger, "도착 표식 콜라이더가 트리거가 아니다");
+            Assert.That(goal.GetComponentsInChildren<Renderer>().Length, Is.GreaterThan(0),
+                "도착 표식에 보이는 화살표가 없다");
+
             Time.timeScale = 3f;
             truck.EnableAutopilotForTesting();
             flow.StartDriving();

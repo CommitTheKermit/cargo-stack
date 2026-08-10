@@ -341,14 +341,6 @@ namespace CargoStack
                 travelled = Mathf.Max(0f, travelled);
             }
 
-            bool reachedGoal = travelled >= goalDistance;
-            if (reachedGoal)
-            {
-                travelled = goalDistance;
-                isDriving = false;
-                Speed = 0f;
-            }
-
             routePosition = path.PositionAt(travelled);
             pathHeading = PathHeadingAt(travelled);
             UpdateSlipFeedback(routePosition, pathHeading, appliedLateralAcceleration, deltaTime);
@@ -381,9 +373,15 @@ namespace CargoStack
 
             body.MovePosition(position);
             body.MoveRotation(rotation);
+        }
 
-            if (reachedGoal)
+        private void OnTriggerEnter(Collider other)
+        {
+            if (isDriving && other.CompareTag("Finish"))
             {
+                isDriving = false;
+                Speed = 0f;
+                planarVelocity = Vector3.zero;
                 Arrived?.Invoke();
             }
         }
