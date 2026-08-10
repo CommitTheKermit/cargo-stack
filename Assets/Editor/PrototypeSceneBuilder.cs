@@ -33,12 +33,12 @@ namespace CargoStack.EditorTools
         private const string StageFolder = "Assets/Stages";
         private const string PrototypeStagePath = "Assets/Stages/Prototype/PrototypeStage.asset";
         private const string MainMenuScenePath = SceneFolder + "/MainMenu.unity";
+        private const string MenuBackgroundStageScenePath = SceneFolder + "/Stage01_Tutorial.unity";
         private const string IceRoadMaterialPath = MaterialFolder + "/IceRoad.mat";
         private const string SnowGroundMaterialPath = MaterialFolder + "/SnowGround.mat";
         private const string FontFolder = "Assets/Fonts";
         private const string TitleFontPath = FontFolder + "/Pretendard-Light.ttf";
-        private const string BodyFontPath = FontFolder + "/Pretendard-Regular.ttf";
-        private const string MenuBackgroundVideoPath = "Assets/Video/MenuBackground.mp4";
+        private const string BodyFontPath = "Assets/Resources/Pretendard-Regular.ttf";
 
         // BlueTruck 메시의 수평면과 벽 삼각형을 계측한 Truck 로컬 좌표다.
         // v2 Z-up 원본을 Y-up으로 세우고 차량 앞(-Y)을 진행 방향 +X로 돌린 뒤
@@ -148,11 +148,6 @@ namespace CargoStack.EditorTools
         {
             string[] paths = FindStageDefinitionPaths();
 
-            Directory.CreateDirectory(SceneFolder);
-            Scene scene = EditorSceneManager.NewScene(
-                NewSceneSetup.EmptyScene,
-                NewSceneMode.Single);
-
             var visibleStages = new List<StageDefinition>();
             foreach (string path in paths)
             {
@@ -170,23 +165,56 @@ namespace CargoStack.EditorTools
                     "메인 메뉴에 표시할 스테이지가 없다.");
             }
 
-            var cameraObject = new GameObject("Main Camera")
+            Scene scene = EditorSceneManager.OpenScene(
+                MenuBackgroundStageScenePath,
+                OpenSceneMode.Single);
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            Transform bedAnchor = GameObject.Find("BedAnchor")?.transform;
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>();
+            DioramaCamera cameraRig = Object.FindAnyObjectByType<DioramaCamera>();
+            TruckTailgate tailgate = Object.FindAnyObjectByType<TruckTailgate>();
+            GameObject player = GameObject.Find("Player");
+            Camera firstPersonCamera = GameObject.Find("First Person Camera")?.GetComponent<Camera>();
+            Camera demoCamera = cameraRig?.GetComponent<Camera>();
+
+            if (truck == null || bedAnchor == null || cargo.Length == 0
+                || cameraRig == null || tailgate == null || player == null
+                || firstPersonCamera == null || demoCamera == null)
             {
-                tag = "MainCamera",
-            };
-            Camera camera = cameraObject.AddComponent<Camera>();
-            camera.clearFlags = CameraClearFlags.SolidColor;
-            camera.backgroundColor = Color.black;
-            cameraObject.AddComponent<AudioListener>();
-            AttachMenuBackgroundVideo(camera);
-            ConfigureBackgroundMusic();
+                throw new InvalidOperationException(
+                    "Stage 01에서 메뉴 라이브 데모에 필요한 오브젝트를 찾지 못했다.");
+            }
+
+            Object.FindAnyObjectByType<GameFlow>().enabled = false;
+            Object.FindAnyObjectByType<CameraDirector>().enabled = false;
+            Object.FindAnyObjectByType<PrototypeHud>().enabled = false;
+            Object.FindAnyObjectByType<ResultScreen>().enabled = false;
+            player.SetActive(false);
+
+            firstPersonCamera.enabled = false;
+            firstPersonCamera.GetComponent<FirstPersonCamera>().enabled = false;
+            firstPersonCamera.GetComponent<AudioListener>().enabled = false;
+            firstPersonCamera.gameObject.tag = "Untagged";
+            demoCamera.enabled = true;
+            demoCamera.GetComponent<AudioListener>().enabled = true;
+            demoCamera.gameObject.tag = "MainCamera";
+
+            var demoObject = new GameObject("MenuBackgroundDemo");
+            demoObject.AddComponent<MenuBackgroundDemo>().Configure(
+                truck,
+                bedAnchor,
+                cargo,
+                cameraRig,
+                tailgate);
 
             var menuObject = new GameObject("MainMenu");
             var controller = menuObject.AddComponent<MainMenuController>();
             controller.Configure(visibleStages.ToArray());
+            Font titleFont = AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath);
+            Font bodyFont = AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath);
             controller.SetFonts(
-                AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath),
-                AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath));
+                titleFont,
+                bodyFont);
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
             EnsureSceneInBuildSettings(MainMenuScenePath, true);
@@ -195,34 +223,6 @@ namespace CargoStack.EditorTools
             Debug.Log(
                 $"[CargoStack] 메인 메뉴 생성 완료: {MainMenuScenePath} "
                 + $"(표시 스테이지 {visibleStages.Count}개)");
-        }
-
-        /// <summary>
-        /// 메인 메뉴 배경으로 게임플레이 녹화 영상을 카메라 근평면에 재생한다.
-        /// 영상 위에는 MainMenuController 가 검은 필터와 글자를 얹는다(IMGUI 는 카메라 위에 그려진다).
-        /// 아직 녹화 영상이 없으면 검은 배경으로 둔다. 영상은 CargoStack/메뉴 배경 영상 녹화 로 만든다.
-        /// </summary>
-        private static void AttachMenuBackgroundVideo(Camera camera)
-        {
-            var clip = AssetDatabase.LoadAssetAtPath<UnityEngine.Video.VideoClip>(
-                MenuBackgroundVideoPath);
-            if (clip == null)
-            {
-                Debug.LogWarning(
-                    "[CargoStack] 메뉴 배경 영상을 찾지 못해 검은 배경으로 둔다: "
-                    + MenuBackgroundVideoPath);
-                return;
-            }
-
-            var player = camera.gameObject.AddComponent<UnityEngine.Video.VideoPlayer>();
-            player.playOnAwake = true;
-            player.isLooping = true;
-            player.waitForFirstFrame = true;
-            player.renderMode = UnityEngine.Video.VideoRenderMode.CameraNearPlane;
-            player.targetCamera = camera;
-            player.clip = clip;
-            player.aspectRatio = UnityEngine.Video.VideoAspectRatio.FitOutside;
-            player.audioOutputMode = UnityEngine.Video.VideoAudioOutputMode.None;
         }
 
         /// <summary>
