@@ -17,6 +17,7 @@ namespace CargoStack
             Array.Empty<StageDefinition>();
         [SerializeField] private Font titleFont;
         [SerializeField] private Font bodyFont;
+        [SerializeField] private RectTransform tutorialBadge;
 
         [Tooltip("패널 밖 배경 데모에 덮는 검은 필터의 진하기(0~1).")]
         [SerializeField, Range(0f, 1f)] private float overlayOpacity = 0.12f;
@@ -25,7 +26,6 @@ namespace CargoStack
         private GUIStyle sectionStyle;
         private GUIStyle optionStyle;
         private GUIStyle optionHoverStyle;
-        private GUIStyle noteStyle;
         private GUIStyle descriptionStyle;
         private GUIStyle loadingStyle;
         private Texture2D overlayTexture;
@@ -47,6 +47,11 @@ namespace CargoStack
         {
             titleFont = title;
             bodyFont = body;
+        }
+
+        public void SetTutorialBadge(RectTransform badge)
+        {
+            tutorialBadge = badge;
         }
 
         public void LoadStage(int index)
@@ -95,7 +100,6 @@ namespace CargoStack
             sectionStyle.fontSize = Mathf.RoundToInt(optionSize * 0.6f);
             optionStyle.fontSize = Mathf.RoundToInt(optionSize);
             optionHoverStyle.fontSize = optionStyle.fontSize;
-            noteStyle.fontSize = Mathf.RoundToInt(optionSize * 0.62f);
             descriptionStyle.fontSize = Mathf.RoundToInt(optionSize * 0.6f);
             loadingStyle.fontSize = Mathf.RoundToInt(optionSize * 0.7f);
 
@@ -131,9 +135,7 @@ namespace CargoStack
 
                 if (index == 0)
                 {
-                    GUI.Label(
-                        new Rect(row.xMax - 62f, row.y, 62f, row.height),
-                        "추천", noteStyle);
+                    PositionTutorialBadge(row);
                 }
 
                 if (GUI.Button(row, GUIContent.none, GUIStyle.none) && !isLoading)
@@ -168,6 +170,18 @@ namespace CargoStack
             GUI.color = color;
             GUI.DrawTexture(rect, overlayTexture);
             GUI.color = Color.white;
+        }
+
+        private void PositionTutorialBadge(Rect row)
+        {
+            if (tutorialBadge == null)
+            {
+                return;
+            }
+
+            float height = Mathf.Min(30f, row.height - 8f);
+            tutorialBadge.sizeDelta = new Vector2(height * 3f, height);
+            tutorialBadge.anchoredPosition = new Vector2(row.xMax - 4f, -(row.center.y));
         }
 
         private void EnsureStyles()
@@ -213,12 +227,6 @@ namespace CargoStack
                 font = bodyFont,
                 alignment = TextAnchor.MiddleLeft,
                 normal = { textColor = white },
-            };
-            noteStyle = new GUIStyle
-            {
-                font = bodyFont,
-                alignment = TextAnchor.MiddleRight,
-                normal = { textColor = yellow },
             };
             descriptionStyle = new GUIStyle
             {
