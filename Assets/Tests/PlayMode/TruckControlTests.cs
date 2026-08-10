@@ -262,6 +262,86 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 실제_바퀴_접점을_따르고_지면이_사라지면_정지한다()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            TruckWheelAnimator wheels = truck != null
+                ? truck.GetComponent<TruckWheelAnimator>()
+                : null;
+            MeshCollider road = GameObject.Find("RoadSurface")?.GetComponent<MeshCollider>();
+            MeshCollider ground = GameObject.Find("GroundSurface")?.GetComponent<MeshCollider>();
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            Assert.NotNull(wheels);
+            Assert.NotNull(road);
+            Assert.NotNull(ground);
+            GameObject.Find("Environment")?.SetActive(false);
+
+            truck.SetControlInputForTesting(0f, 0f, 0f);
+            flow.StartDriving();
+            while (flow.State == GameState.Loading)
+            {
+                yield return null;
+            }
+
+            yield return new WaitForFixedUpdate();
+            Vector3 originalUp = truck.transform.up;
+            Vector3 rollAxis = truck.transform.right;
+            road.transform.RotateAround(truck.transform.position, rollAxis, 8f);
+            ground.transform.RotateAround(truck.transform.position, rollAxis, 8f);
+            Physics.SyncTransforms();
+            for (int step = 0; step < 5; step++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            float bodyRoll = Vector3.SignedAngle(originalUp, truck.transform.up, rollAxis);
+            Assert.That(Mathf.Abs(bodyRoll), Is.GreaterThan(6f),
+                "실제 지면을 기울여도 차체가 경로의 고정 평면만 따랐다");
+            float maximumCompression = 0f;
+            for (int index = 0; index < wheels.WheelCount; index++)
+            {
+                maximumCompression = Mathf.Max(
+                    maximumCompression,
+                    wheels.GetSuspensionRoot(index).localPosition.y
+                        - wheels.GetRestLocalPosition(index).y);
+            }
+
+            Assert.That(maximumCompression, Is.LessThan(0.03f),
+                "차체가 접점을 따르지 못해 바퀴가 차체 쪽으로 밀려 들어갔다");
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            for (int step = 0; step < 40; step++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            Assert.That(truck.Speed, Is.GreaterThan(2f), "지면 제거 전에 트럭이 출발하지 못했다");
+            road.enabled = false;
+            ground.enabled = false;
+            Physics.SyncTransforms();
+            yield return new WaitForFixedUpdate();
+            Vector3 stoppedPosition = truck.transform.position;
+            for (int step = 0; step < 10; step++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            float unsupportedMovement = Vector3.Distance(stoppedPosition, truck.transform.position);
+            Assert.That(truck.Speed, Is.LessThan(0.01f), "바퀴 아래가 비었는데도 가속이 계속됐다");
+            Assert.That(unsupportedMovement, Is.LessThan(0.03f),
+                "바퀴 아래가 비었는데도 트럭이 빈 공간으로 진행했다");
+            Debug.Log(
+                $"[CargoStack] 실제 접지: 차체 롤 {bodyRoll:0.00}°, "
+                + $"최대 바퀴 압축 {maximumCompression:0.000}m, "
+                + $"무지면 이동 {unsupportedMovement:0.000}m");
+            truck.ClearControlInputForTesting();
+        }
+
+        [UnityTest]
         public IEnumerator 최고속도_60kmh가_실제_적용된다()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);

@@ -91,6 +91,7 @@ namespace CargoStack
         private Rigidbody body;
         private Collider[] truckColliders;
         private readonly Collider[] obstacleBuffer = new Collider[32];
+        private readonly RaycastHit[] groundContacts = new RaycastHit[4];
         private TruckWheelAnimator wheelAnimator;
         private float travelled;
         private bool isDriving;
@@ -145,7 +146,7 @@ namespace CargoStack
             Vector3 routePosition = path.PositionAt(travelled);
             planarPosition = new Vector3(routePosition.x, 0f, routePosition.z);
             steeringHeading = PathHeadingAt(travelled);
-            SurfaceFriction = SampleSurfaceFriction(routePosition);
+            SurfaceFriction = defaultSurfaceFriction;
         }
 
         public void BeginDrive()
@@ -198,8 +199,18 @@ namespace CargoStack
             planarPosition = new Vector3(routePosition.x, 0f, routePosition.z);
             planarVelocity = Vector3.zero;
             ResetSlipFeedback();
-            SurfaceFriction = SampleSurfaceFriction(routePosition);
-            GetPoseAt(steeringHeading, 0f, out Vector3 position, out Quaternion rotation);
+            bool grounded = TryGetGroundPose(
+                steeringHeading,
+                0f,
+                out Vector3 position,
+                out Quaternion rotation,
+                out float friction);
+            if (!grounded)
+            {
+                GetRoutePoseAt(steeringHeading, out position, out rotation);
+            }
+
+            SurfaceFriction = grounded ? friction : defaultSurfaceFriction;
             transform.SetPositionAndRotation(position, rotation);
         }
 
@@ -252,7 +263,6 @@ namespace CargoStack
 
             wheelAnimator?.SetFrontSteeringAngle(steeringAngleDegrees);
 
-            SurfaceFriction = SampleSurfaceFriction(routePosition);
             float planarSpeed = PlanarSpeedAt(travelled, Speed);
             float appliedLateralAcceleration = ApplySurfaceTraction(
                 deltaTime,
@@ -284,25 +294,32 @@ namespace CargoStack
             routePosition = path.PositionAt(travelled);
             pathHeading = PathHeadingAt(travelled);
             UpdateSlipFeedback(routePosition, pathHeading, appliedLateralAcceleration, deltaTime);
-            GetPoseAt(
+            bool grounded = TryGetGroundPose(
                 steeringHeading,
                 DriftRollDegrees,
                 out Vector3 position,
-                out Quaternion rotation);
+                out Quaternion rotation,
+                out float friction);
 
-            if (!autopilotForTesting && ObstacleBlocksMove(position, rotation))
+            if (!grounded || (!autopilotForTesting && ObstacleBlocksMove(position, rotation)))
             {
                 planarPosition = previousPlanarPosition;
                 travelled = previousTravelled;
                 Speed = 0f;
                 planarVelocity = Vector3.zero;
-                routePosition = path.PositionAt(travelled);
-                GetPoseAt(
+                if (!TryGetGroundPose(
                     steeringHeading,
                     DriftRollDegrees,
                     out position,
-                    out rotation);
+                    out rotation,
+                    out friction))
+                {
+                    position = body.position;
+                    rotation = body.rotation;
+                }
             }
+
+            SurfaceFriction = grounded ? friction : SurfaceFriction;
 
             body.MovePosition(position);
             body.MoveRotation(rotation);
@@ -521,25 +538,6 @@ namespace CargoStack
             return heading.normalized;
         }
 
-        private float SampleSurfaceFriction(Vector3 routePosition)
-        {
-            int mask = groundMask.value != 0 ? groundMask.value : Physics.DefaultRaycastLayers;
-            Vector3 origin = new(planarPosition.x, routePosition.y + 3f, planarPosition.z);
-            if (!Physics.Raycast(
-                    origin,
-                    Vector3.down,
-                    out RaycastHit hit,
-                    6f,
-                    mask,
-                    QueryTriggerInteraction.Ignore))
-            {
-                return defaultSurfaceFriction;
-            }
-
-            PhysicsMaterial material = hit.collider.sharedMaterial;
-            return material != null ? material.dynamicFriction : defaultSurfaceFriction;
-        }
-
         private void ResetSlipFeedback()
         {
             LateralDriftOffset = 0f;
@@ -550,9 +548,85 @@ namespace CargoStack
             rollVelocity = 0f;
         }
 
-        private void GetPoseAt(
+        private bool TryGetGroundPose(
             Vector3 horizontalHeading,
             float roll,
+            out Vector3 position,
+            out Quaternion rotation,
+            out float friction)
+        {
+            GetRoutePoseAt(horizontalHeading, out position, out Quaternion routeRotation);
+            rotation = routeRotation;
+            friction = defaultSurfaceFriction;
+            if (wheelAnimator == null || wheelAnimator.WheelCount != groundContacts.Length)
+            {
+                return false;
+            }
+
+            friction = 0f;
+            for (int index = 0; index < groundContacts.Length; index++)
+            {
+                if (!wheelAnimator.TryGetGroundHit(
+                        position,
+                        routeRotation,
+                        index,
+                        groundMask,
+                        out groundContacts[index]))
+                {
+                    return false;
+                }
+
+                PhysicsMaterial material = groundContacts[index].collider.sharedMaterial;
+                friction += material != null
+                    ? material.dynamicFriction
+                    : defaultSurfaceFriction;
+            }
+
+            friction /= groundContacts.Length;
+
+            Vector3 front = (groundContacts[0].point + groundContacts[1].point) * 0.5f;
+            Vector3 rear = (groundContacts[2].point + groundContacts[3].point) * 0.5f;
+            Vector3 left = (groundContacts[0].point + groundContacts[2].point) * 0.5f;
+            Vector3 right = (groundContacts[1].point + groundContacts[3].point) * 0.5f;
+            Vector3 groundUp = Vector3.Cross(right - left, front - rear).normalized;
+            if (Vector3.Dot(groundUp, Vector3.up) < 0f)
+            {
+                groundUp = -groundUp;
+            }
+
+            Vector3 bodyHeading = Vector3.ProjectOnPlane(horizontalHeading, groundUp);
+            if (groundUp.sqrMagnitude < 0.5f || bodyHeading.sqrMagnitude < 1e-5f)
+            {
+                return false;
+            }
+
+            bodyHeading.Normalize();
+            rotation = Quaternion.LookRotation(bodyHeading, groundUp)
+                * Quaternion.Euler(0f, -90f, 0f)
+                * Quaternion.Euler(roll, 0f, 0f);
+
+            float axleMidpointOffset = (frontAxleOffset + rearAxleOffset) * 0.5f;
+            Vector3 axleAnchor = new(axleMidpointOffset, -rideHeight, 0f);
+            position += routeRotation * axleAnchor - rotation * axleAnchor;
+
+            Vector3 suspensionUp = rotation * Vector3.up;
+            float requiredCorrection = float.NegativeInfinity;
+            for (int index = 0; index < groundContacts.Length; index++)
+            {
+                Vector3 wheel = wheelAnimator.GetRestLocalPosition(index);
+                Vector3 wheelBottom = position
+                    + rotation * (wheel + Vector3.down * wheelAnimator.WheelRadius);
+                requiredCorrection = Mathf.Max(
+                    requiredCorrection,
+                    Vector3.Dot(groundContacts[index].point - wheelBottom, suspensionUp));
+            }
+
+            position += suspensionUp * requiredCorrection;
+            return true;
+        }
+
+        private void GetRoutePoseAt(
+            Vector3 horizontalHeading,
             out Vector3 position,
             out Quaternion rotation)
         {
@@ -577,24 +651,7 @@ namespace CargoStack
             axleContactMidpoint += horizontalHeading * axleMidpointOffset;
             position = axleContactMidpoint
                 - pathRotation * new Vector3(axleMidpointOffset, -rideHeight, 0f);
-            rotation = pathRotation * Quaternion.Euler(roll, 0f, 0f);
-
-            if (wheelAnimator != null && wheelAnimator.WheelCount > 0)
-            {
-                Vector3 suspensionUp = rotation * Vector3.up;
-                float requiredCorrection = float.NegativeInfinity;
-                for (int index = 0; index < wheelAnimator.WheelCount; index++)
-                {
-                    Vector3 wheel = wheelAnimator.GetRestLocalPosition(index);
-                    Vector3 wheelBottom = position
-                        + rotation * (wheel + Vector3.down * wheelAnimator.WheelRadius);
-                    float roadHeight = path.PositionAt(travelled + wheel.x).y;
-                    float correction = (roadHeight - wheelBottom.y) / suspensionUp.y;
-                    requiredCorrection = Mathf.Max(requiredCorrection, correction);
-                }
-
-                position += suspensionUp * requiredCorrection;
-            }
+            rotation = pathRotation;
         }
     }
 }

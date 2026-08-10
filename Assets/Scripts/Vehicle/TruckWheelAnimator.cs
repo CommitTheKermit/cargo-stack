@@ -6,15 +6,15 @@ namespace CargoStack
     /// <summary>
     /// 키네마틱 트럭의 실제 프레임 간 이동량으로 원본 바퀴 메시를 굴리고,
     /// 앞바퀴 두 개는 TruckMover가 계산한 조향각만큼 좌우로 돌린다.
-    /// 각 바퀴 아래 지면 높이를 따라 시각 서스펜션을 압축·복원한다.
-    /// 주행 물리는 기존 TruckMover가 전담하며 이 컴포넌트는 시각물만 움직인다.
+    /// 각 바퀴 아래 실제 지면 접점을 주행 물리에 제공하고, 같은 접점으로
+    /// 시각 서스펜션을 압축·복원한다.
     /// </summary>
     public sealed class TruckWheelAnimator : MonoBehaviour
     {
         [SerializeField] private Transform[] suspensionRoots;
         [SerializeField] private Transform[] spinRoots;
         [SerializeField] private float wheelRadius = 0.515f;
-        [SerializeField] private float compressionTravel = 0.50f;
+        [SerializeField] private float compressionTravel = 0.20f;
         [SerializeField] private float droopTravel = 0.50f;
         [SerializeField] private float rayStartAboveCenter = 0.70f;
         [SerializeField] private float rayLength = 1.80f;
@@ -30,10 +30,11 @@ namespace CargoStack
         private float totalSpinDegrees;
         private float frontSteeringAngleDegrees;
         private bool initialized;
+        private readonly RaycastHit[] groundHits = new RaycastHit[16];
 
         public int WheelCount => suspensionRoots?.Length ?? 0;
         public float WheelRadius => wheelRadius;
-        public float CompressionTravel => compressionTravel;
+        public float CompressionTravel => Mathf.Min(compressionTravel, 0.20f);
         public float DroopTravel => droopTravel;
         public float SpinAngleDegrees => spinAngleDegrees;
         public float TotalSpinDegrees => totalSpinDegrees;
@@ -69,6 +70,49 @@ namespace CargoStack
         public void SetFrontSteeringAngle(float angleDegrees)
         {
             frontSteeringAngleDegrees = angleDegrees;
+        }
+
+        public bool TryGetGroundHit(
+            Vector3 truckPosition,
+            Quaternion truckRotation,
+            int wheelIndex,
+            LayerMask collisionMask,
+            out RaycastHit hit)
+        {
+            hit = default;
+            if (suspensionRoots == null || wheelIndex < 0 || wheelIndex >= suspensionRoots.Length)
+            {
+                return false;
+            }
+
+            Vector3 up = truckRotation * Vector3.up;
+            Vector3 restWorld = truckPosition
+                + truckRotation * GetRestLocalPosition(wheelIndex);
+            var ray = new Ray(restWorld + up * rayStartAboveCenter, -up);
+            bool foundGround = roadCollider != null
+                && roadCollider.enabled
+                && roadCollider.Raycast(ray, out hit, rayLength);
+            int hitCount = Physics.RaycastNonAlloc(
+                ray,
+                groundHits,
+                rayLength,
+                collisionMask,
+                QueryTriggerInteraction.Ignore);
+            for (int index = 0; index < hitCount; index++)
+            {
+                RaycastHit candidate = groundHits[index];
+                if (candidate.collider == null
+                    || candidate.collider.name.StartsWith("Boundary_", StringComparison.Ordinal)
+                    || (foundGround && candidate.distance >= hit.distance))
+                {
+                    continue;
+                }
+
+                hit = candidate;
+                foundGround = true;
+            }
+
+            return foundGround;
         }
 
         private void Awake()
@@ -162,34 +206,20 @@ namespace CargoStack
             Vector3 up = transform.up;
             for (int index = 0; index < suspensionRoots.Length; index++)
             {
-                Vector3 restWorld = transform.TransformPoint(restLocalPositions[index]);
-                Vector3 rayOrigin = restWorld + up * rayStartAboveCenter;
                 float targetOffset = 0f;
-                var ray = new Ray(rayOrigin, -up);
-                RaycastHit hit = default;
-                bool foundGround = roadCollider != null
-                    && roadCollider.Raycast(ray, out hit, rayLength);
-                if (Physics.Raycast(
-                        ray,
-                        out RaycastHit candidate,
-                        rayLength,
+                if (TryGetGroundHit(
+                        transform.position,
+                        transform.rotation,
+                        index,
                         groundMask,
-                        QueryTriggerInteraction.Ignore)
-                    && !candidate.collider.name.StartsWith("Boundary_", StringComparison.Ordinal)
-                    && (!foundGround || candidate.distance < hit.distance))
-                {
-                    hit = candidate;
-                    foundGround = true;
-                }
-
-                if (foundGround)
+                        out RaycastHit hit))
                 {
                     Vector3 targetCenter = hit.point + up * wheelRadius;
                     float targetLocalY = transform.InverseTransformPoint(targetCenter).y;
                     targetOffset = Mathf.Clamp(
                         targetLocalY - restLocalPositions[index].y,
                         -droopTravel,
-                        compressionTravel);
+                        CompressionTravel);
                 }
 
                 Transform suspension = suspensionRoots[index];
