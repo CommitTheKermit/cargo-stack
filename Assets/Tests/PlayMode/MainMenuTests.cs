@@ -22,8 +22,8 @@ namespace CargoStack.Tests
                 Object.FindAnyObjectByType<MainMenuController>();
 
             Assert.NotNull(menu, "MainMenuController가 없다");
-            Assert.AreEqual(7, menu.StageCount);
-            Assert.AreEqual(7, menu.ButtonCount, "이미지 스테이지 버튼 수가 다르다");
+            Assert.AreEqual(8, menu.StageCount);
+            Assert.AreEqual(8, menu.ButtonCount, "이미지 스테이지 버튼 수가 다르다");
             Assert.NotNull(GameObject.Find("Main Menu UI"), "이미지 기반 메인 메뉴 Canvas가 없다");
             Assert.AreEqual("stage-01", menu.GetStage(0).StageId);
             Assert.AreEqual("stage-02", menu.GetStage(1).StageId);
@@ -32,6 +32,7 @@ namespace CargoStack.Tests
             Assert.AreEqual("stage-05", menu.GetStage(4).StageId);
             Assert.AreEqual("stage-06", menu.GetStage(5).StageId);
             Assert.AreEqual("stage-07", menu.GetStage(6).StageId);
+            Assert.AreEqual("stage-08", menu.GetStage(7).StageId);
             Assert.IsFalse(menu.GetStage(0).StageId == "prototype");
         }
 
@@ -58,6 +59,40 @@ namespace CargoStack.Tests
             Assert.IsTrue(
                 Object.FindAnyObjectByType<DioramaCamera>().GetComponent<Camera>().enabled,
                 "메뉴 배경용 디오라마 카메라가 꺼져 있다");
+        }
+
+        [UnityTest]
+        public IEnumerator 일반_스테이지는_슬라이더_없이_이미지_키_안내만_보여준다()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "Stage02_SpeedBumps",
+                LoadSceneMode.Single);
+            yield return null;
+
+            PrototypeHud hud = Object.FindAnyObjectByType<PrototypeHud>();
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            Assert.NotNull(hud);
+            Assert.NotNull(flow);
+            Assert.NotNull(GameObject.Find("Stage Key Guide UI"));
+            Assert.IsTrue(hud.IsLoadingGuideVisible, "적재 키 안내가 보이지 않는다");
+            Assert.IsFalse(hud.IsDrivingGuideVisible, "출발 전에 주행 키 안내가 보인다");
+            Assert.AreEqual(
+                0,
+                Object.FindObjectsByType<Slider>(FindObjectsSortMode.None).Length,
+                "일반 스테이지에 마찰 슬라이더가 남아 있다");
+
+            flow.StartDriving();
+            float timeout = 1f;
+            while (flow.State == GameState.Loading && timeout > 0f)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+            yield return null;
+
+            Assert.AreEqual(GameState.Driving, flow.State);
+            Assert.IsFalse(hud.IsLoadingGuideVisible, "출발 뒤에도 적재 키 안내가 보인다");
+            Assert.IsTrue(hud.IsDrivingGuideVisible, "출발 뒤 주행 키 안내로 전환되지 않는다");
         }
 
         [UnityTest]
