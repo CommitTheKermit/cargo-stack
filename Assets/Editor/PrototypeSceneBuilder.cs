@@ -581,10 +581,6 @@ namespace CargoStack.EditorTools
                 new Vector3(0.55f, 1.8f, 0.7f), Quaternion.Euler(0f, 0f, 45f), material);
             AddGoalArrowPart(goal.transform, "Head Right", new Vector3(0.65f, 3.45f, 0f),
                 new Vector3(0.55f, 1.8f, 0.7f), Quaternion.Euler(0f, 0f, -45f), material);
-            AddGoalArrowPart(goal.transform, "Head Front", new Vector3(0f, 3.45f, -0.65f),
-                new Vector3(0.7f, 1.8f, 0.55f), Quaternion.Euler(-45f, 0f, 0f), material);
-            AddGoalArrowPart(goal.transform, "Head Back", new Vector3(0f, 3.45f, 0.65f),
-                new Vector3(0.7f, 1.8f, 0.55f), Quaternion.Euler(45f, 0f, 0f), material);
         }
 
         private static void AddGoalArrowPart(
