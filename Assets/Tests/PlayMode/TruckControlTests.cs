@@ -410,6 +410,57 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 빙판_고속_조향은_실제_전진_속도를_기준으로_회전한다()
+        {
+            yield return SceneManager.LoadSceneAsync("Stage05_Winter", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            GameObject.Find("Environment")?.SetActive(false);
+            GameObject.Find("RoadObstacles")?.SetActive(false);
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            flow.StartDriving();
+            float startTimeout = 3f;
+            while (flow.State == GameState.Loading && startTimeout > 0f)
+            {
+                yield return null;
+                startTimeout -= Time.unscaledDeltaTime;
+            }
+
+            float accelerationTimeout = 4f;
+            while (truck.Speed < 12f && accelerationTimeout > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                accelerationTimeout -= Time.fixedDeltaTime;
+            }
+
+            Assert.That(truck.Speed, Is.GreaterThanOrEqualTo(12f), "빙판 조향 검증 속도까지 가속하지 못했다");
+            Assert.That(truck.SurfaceFriction, Is.LessThan(0.01f), "Stage05 얼음 마찰이 주행에 반영되지 않았다");
+
+            truck.SetControlInputForTesting(1f, 0f, 1f);
+            float maximumSlipAngle = 0f;
+            float minimumForwardAlignment = 1f;
+            for (int step = 0; step < 60; step++)
+            {
+                yield return new WaitForFixedUpdate();
+                float slipRadians = truck.DriftYawDegrees * Mathf.Deg2Rad;
+                maximumSlipAngle = Mathf.Max(maximumSlipAngle, Mathf.Abs(truck.DriftYawDegrees));
+                minimumForwardAlignment = Mathf.Min(minimumForwardAlignment, Mathf.Cos(slipRadians));
+            }
+
+            Assert.That(maximumSlipAngle, Is.GreaterThan(70f), "방향 반전을 검증할 만큼 빙판 슬립이 발생하지 않았다");
+            Assert.That(minimumForwardAlignment, Is.GreaterThanOrEqualTo(-0.01f),
+                "전진 중인 트럭의 차체가 실제 이동 방향을 넘어 반대로 회전했다");
+            Debug.Log(
+                $"[CargoStack] 빙판 수동 조향: 속도 {truck.Speed:0.00}m/s, "
+                + $"최대 슬립 {maximumSlipAngle:0.0}°, 최소 전진 정렬 {minimumForwardAlignment:0.000}");
+            truck.ClearControlInputForTesting();
+        }
+
+        [UnityTest]
         public IEnumerator 최고속도_60kmh가_실제_적용된다()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
