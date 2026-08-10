@@ -88,6 +88,9 @@ namespace CargoStack
         [SerializeField] private Vector3 obstacleCollisionCenter = new(0f, 0.65f, 0f);
         [SerializeField] private Vector3 obstacleCollisionHalfExtents = new(3.1f, 1.3f, 1.25f);
 
+        [Tooltip("장애물 충돌 직전 자세로 돌아간 뒤 바깥쪽으로 밀려나는 최대 거리.")]
+        [SerializeField, Min(0f)] private float obstacleReboundDistance = 0.15f;
+
         private Rigidbody body;
         private Collider[] truckColliders;
         private readonly Collider[] obstacleBuffer = new Collider[32];
@@ -282,6 +285,11 @@ namespace CargoStack
             float deltaTime = Time.fixedDeltaTime;
             Vector3 previousPlanarPosition = planarPosition;
             float previousTravelled = travelled;
+            Vector3 previousSteeringHeading = steeringHeading;
+            float previousDriftRollDegrees = DriftRollDegrees;
+            float previousRollVelocity = rollVelocity;
+            Vector3 previousBodyPosition = body.position;
+            Quaternion previousBodyRotation = body.rotation;
 
             Vector3 routePosition = path.PositionAt(travelled);
             Vector3 pathHeading = PathHeadingAt(travelled);
@@ -351,21 +359,47 @@ namespace CargoStack
                 out Quaternion rotation,
                 out float friction);
 
-            if (!autopilotForTesting && ObstacleBlocksMove(position, rotation))
+            if (!autopilotForTesting
+                && ObstacleBlocksMove(position, rotation, out Vector3 separationDirection))
             {
+                Vector3 attemptedPlanarMove = planarPosition - previousPlanarPosition;
                 planarPosition = previousPlanarPosition;
                 travelled = previousTravelled;
+                steeringHeading = previousSteeringHeading;
+                DriftRollDegrees = previousDriftRollDegrees;
+                rollVelocity = previousRollVelocity;
                 Speed = 0f;
                 planarVelocity = Vector3.zero;
-                if (!TryGetGroundPose(
+
+                Vector3 reboundOffset = Vector3.ProjectOnPlane(separationDirection, Vector3.up);
+                if (reboundOffset.sqrMagnitude < 1e-5f)
+                {
+                    reboundOffset = -attemptedPlanarMove;
+                }
+
+                if (reboundOffset.sqrMagnitude > 1e-5f)
+                {
+                    reboundOffset = reboundOffset.normalized
+                        * Mathf.Min(obstacleReboundDistance, attemptedPlanarMove.magnitude);
+                    planarPosition += reboundOffset;
+                    travelled = Mathf.Max(
+                        0f,
+                        travelled + Vector3.Dot(reboundOffset, PathHeadingAt(travelled)));
+                }
+
+                hasGroundPose = TryGetGroundPose(
                     steeringHeading,
                     DriftRollDegrees,
                     out position,
                     out rotation,
-                    out friction))
+                    out friction);
+                if (!hasGroundPose || ObstacleBlocksMove(position, rotation, out _))
                 {
-                    position = body.position;
-                    rotation = body.rotation;
+                    planarPosition = previousPlanarPosition;
+                    travelled = previousTravelled;
+                    position = previousBodyPosition;
+                    rotation = previousBodyRotation;
+                    hasGroundPose = false;
                 }
             }
 
@@ -386,8 +420,12 @@ namespace CargoStack
             }
         }
 
-        private bool ObstacleBlocksMove(Vector3 nextPosition, Quaternion nextRotation)
+        private bool ObstacleBlocksMove(
+            Vector3 nextPosition,
+            Quaternion nextRotation,
+            out Vector3 separationDirection)
         {
+            separationDirection = Vector3.zero;
             int blockingMask = obstacleMask.value | groundMask.value;
             if (blockingMask == 0)
             {
@@ -432,7 +470,7 @@ namespace CargoStack
                         obstacle,
                         obstacle.transform.position,
                         obstacle.transform.rotation,
-                        out _,
+                        out separationDirection,
                         out _))
                     {
                         return true;
