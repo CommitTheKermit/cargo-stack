@@ -20,7 +20,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 모든_스테이지의_나무와_바위에는_메시_콜라이더가_있다()
+        public IEnumerator 모든_스테이지의_충돌_대상_월드_애셋에는_메시_콜라이더가_있다()
         {
             string[] sceneNames =
             {
@@ -68,9 +68,42 @@ namespace CargoStack.Tests
                     }
                 }
 
+                if (sceneName == "Stage05_Winter" || sceneName == "Stage06_FrozenCargo")
+                {
+                    foreach (string containerName in new[] { "Snowmen", "IcePlatforms" })
+                    {
+                        Transform container = environment.transform.Find(containerName);
+                        Assert.NotNull(container, $"{sceneName}: {containerName} 컨테이너가 없다");
+                        foreach (Transform obstacle in container)
+                        {
+                            MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
+                            Assert.That(colliders.Length, Is.GreaterThan(0),
+                                $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                            obstacleCount++;
+                            colliderCount += colliders.Length;
+                        }
+                    }
+
+                    Transform landmarks = environment.transform.Find("IceLandmarks");
+                    Assert.NotNull(landmarks, $"{sceneName}: IceLandmarks 컨테이너가 없다");
+                    foreach (Transform obstacle in landmarks)
+                    {
+                        if (!obstacle.name.Contains("IceMountain"))
+                        {
+                            continue;
+                        }
+
+                        MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
+                        Assert.That(colliders.Length, Is.GreaterThan(0),
+                            $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                        obstacleCount++;
+                        colliderCount += colliders.Length;
+                    }
+                }
+
                 Debug.Log(
                     $"[CargoStack] {sceneName} 월드 충돌체: "
-                    + $"나무·바위 {obstacleCount}개, MeshCollider {colliderCount}개");
+                    + $"충돌 애셋 {obstacleCount}개, MeshCollider {colliderCount}개");
             }
         }
 

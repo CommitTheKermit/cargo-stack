@@ -593,7 +593,11 @@ namespace CargoStack.EditorTools
             float lift = groundPosition.y - bounds.min.y;
             instance.transform.position += new Vector3(0f, lift, 0f);
 
-            if (parent.name == "Trees" || parent.name == "Rocks")
+            if (parent.name == "Trees"
+                || parent.name == "Rocks"
+                || parent.name == "Snowmen"
+                || parent.name == "IcePlatforms"
+                || name.StartsWith(WinterAssetPrefix + "IceMountain_", StringComparison.Ordinal))
             {
                 AddMeshColliders(instance);
             }
