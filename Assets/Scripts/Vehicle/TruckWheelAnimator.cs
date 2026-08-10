@@ -11,6 +11,9 @@ namespace CargoStack
     /// </summary>
     public sealed class TruckWheelAnimator : MonoBehaviour
     {
+        private const float WorldProbeStartAboveCenter = 3f;
+        private const float WorldProbeLength = 6f;
+
         [SerializeField] private Transform[] suspensionRoots;
         [SerializeField] private Transform[] spinRoots;
         [SerializeField] private float wheelRadius = 0.515f;
@@ -77,7 +80,8 @@ namespace CargoStack
             Quaternion truckRotation,
             int wheelIndex,
             LayerMask collisionMask,
-            out RaycastHit hit)
+            out RaycastHit hit,
+            bool probeWorldDown = false)
         {
             hit = default;
             if (suspensionRoots == null || wheelIndex < 0 || wheelIndex >= suspensionRoots.Length)
@@ -85,17 +89,19 @@ namespace CargoStack
                 return false;
             }
 
-            Vector3 up = truckRotation * Vector3.up;
+            Vector3 up = probeWorldDown ? Vector3.up : truckRotation * Vector3.up;
+            float probeStart = probeWorldDown ? WorldProbeStartAboveCenter : rayStartAboveCenter;
+            float probeLength = probeWorldDown ? WorldProbeLength : rayLength;
             Vector3 restWorld = truckPosition
                 + truckRotation * GetRestLocalPosition(wheelIndex);
-            var ray = new Ray(restWorld + up * rayStartAboveCenter, -up);
+            var ray = new Ray(restWorld + up * probeStart, -up);
             bool foundGround = roadCollider != null
                 && roadCollider.enabled
-                && roadCollider.Raycast(ray, out hit, rayLength);
+                && roadCollider.Raycast(ray, out hit, probeLength);
             int hitCount = Physics.RaycastNonAlloc(
                 ray,
                 groundHits,
-                rayLength,
+                probeLength,
                 collisionMask,
                 QueryTriggerInteraction.Ignore);
             for (int index = 0; index < hitCount; index++)
