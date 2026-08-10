@@ -8,8 +8,11 @@ namespace CargoStack
     public sealed class TutorialGuide : MonoBehaviour
     {
         [SerializeField] private GameFlow flow;
+        [SerializeField] private CargoTracker cargoTracker;
         [SerializeField] private PlayerCargoInteractor cargoInteractor;
         [SerializeField] private PlayerRopeInteractor ropeInteractor;
+        [SerializeField] private TruckTailgate tailgate;
+        [SerializeField] private Text cargoCount;
         [SerializeField] private GameObject loadingPanel;
         [SerializeField] private GameObject drivingPanel;
         [SerializeField] private Image[] loadingChecks;
@@ -17,17 +20,20 @@ namespace CargoStack
         [SerializeField] private Image[] drivingChecks;
         [SerializeField] private Image[] drivingProgress;
 
-        private bool wasHoldingCargo;
-
         public int LoadingCompletedCount => CountEnabled(loadingChecks);
+        public int LoadingStepCount => loadingChecks.Length;
         public int DrivingCompletedCount => CountEnabled(drivingChecks);
+        public string CargoCountText => cargoCount.text;
         public bool IsLoadingPanelVisible => loadingPanel != null && loadingPanel.activeSelf;
         public bool IsDrivingPanelVisible => drivingPanel != null && drivingPanel.activeSelf;
 
         public void Configure(
             GameFlow gameFlow,
+            CargoTracker tracker,
             PlayerCargoInteractor cargo,
             PlayerRopeInteractor rope,
+            TruckTailgate truckTailgate,
+            Text cargoCounter,
             GameObject loading,
             GameObject driving,
             Image[] loadingStepChecks,
@@ -36,8 +42,11 @@ namespace CargoStack
             Image[] drivingProgressChecks)
         {
             flow = gameFlow;
+            cargoTracker = tracker;
             cargoInteractor = cargo;
             ropeInteractor = rope;
+            tailgate = truckTailgate;
+            cargoCount = cargoCounter;
             loadingPanel = loading;
             drivingPanel = driving;
             loadingChecks = loadingStepChecks;
@@ -56,7 +65,6 @@ namespace CargoStack
 
         private void Start()
         {
-            wasHoldingCargo = cargoInteractor.HasCargo;
             HandleStateChanged(flow.State);
         }
 
@@ -82,29 +90,34 @@ namespace CargoStack
 
         private void TrackLoading()
         {
+            int loaded = cargoTracker.LoadedCount;
+            cargoCount.text = $"({loaded} / {cargoTracker.TotalCount})";
+
             if (Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.1f
                 || Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.1f)
             {
                 Complete(loadingChecks, loadingProgress, 0);
             }
 
-            bool isHoldingCargo = cargoInteractor.HasCargo;
-            if (isHoldingCargo)
+            if (cargoInteractor.HasCargo)
             {
                 Complete(loadingChecks, loadingProgress, 1);
             }
 
-            if (wasHoldingCargo && !isHoldingCargo)
+            if (tailgate.IsOpen)
             {
                 Complete(loadingChecks, loadingProgress, 2);
             }
 
-            if (ropeInteractor.TiedRopeCount > 0)
+            if (cargoTracker.TotalCount > 0 && loaded == cargoTracker.TotalCount)
             {
                 Complete(loadingChecks, loadingProgress, 3);
             }
 
-            wasHoldingCargo = isHoldingCargo;
+            if (ropeInteractor.TiedRopeCount > 0)
+            {
+                Complete(loadingChecks, loadingProgress, 4);
+            }
         }
 
         private void TrackDriving()
@@ -145,7 +158,7 @@ namespace CargoStack
 
             if (isDriving)
             {
-                Complete(loadingChecks, loadingProgress, 4);
+                Complete(loadingChecks, loadingProgress, 5);
             }
         }
 
