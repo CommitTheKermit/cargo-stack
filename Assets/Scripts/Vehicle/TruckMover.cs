@@ -352,14 +352,14 @@ namespace CargoStack
             routePosition = path.PositionAt(travelled);
             pathHeading = PathHeadingAt(travelled);
             UpdateSlipFeedback(routePosition, pathHeading, appliedLateralAcceleration, deltaTime);
-            bool grounded = TryGetGroundPose(
+            bool hasGroundPose = TryGetGroundPose(
                 steeringHeading,
                 DriftRollDegrees,
                 out Vector3 position,
                 out Quaternion rotation,
                 out float friction);
 
-            if (!grounded || (!autopilotForTesting && ObstacleBlocksMove(position, rotation)))
+            if (!autopilotForTesting && ObstacleBlocksMove(position, rotation))
             {
                 planarPosition = previousPlanarPosition;
                 travelled = previousTravelled;
@@ -377,7 +377,7 @@ namespace CargoStack
                 }
             }
 
-            SurfaceFriction = grounded ? friction : SurfaceFriction;
+            SurfaceFriction = hasGroundPose ? friction : SurfaceFriction;
 
             body.MovePosition(position);
             body.MoveRotation(rotation);
@@ -390,7 +390,8 @@ namespace CargoStack
 
         private bool ObstacleBlocksMove(Vector3 nextPosition, Quaternion nextRotation)
         {
-            if (obstacleMask.value == 0)
+            int blockingMask = obstacleMask.value | groundMask.value;
+            if (blockingMask == 0)
             {
                 return false;
             }
@@ -401,13 +402,20 @@ namespace CargoStack
                 obstacleCollisionHalfExtents,
                 obstacleBuffer,
                 nextRotation,
-                obstacleMask,
+                blockingMask,
                 QueryTriggerInteraction.Ignore);
 
             Quaternion rootRotationOffset = nextRotation * Quaternion.Inverse(transform.rotation);
             for (int obstacleIndex = 0; obstacleIndex < obstacleCount; obstacleIndex++)
             {
                 Collider obstacle = obstacleBuffer[obstacleIndex];
+                bool isObstacle = (obstacleMask.value & (1 << obstacle.gameObject.layer)) != 0;
+                if (!isObstacle
+                    && !obstacle.name.StartsWith("Boundary_", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
                 for (int truckIndex = 0; truckIndex < truckColliders.Length; truckIndex++)
                 {
                     Collider truckCollider = truckColliders[truckIndex];
@@ -613,6 +621,7 @@ namespace CargoStack
             out Quaternion rotation,
             out float friction)
         {
+            // 실제 접점을 못 얻어도 주행을 계속할 수 있도록 경로 자세를 기본값으로 남긴다.
             GetRoutePoseAt(horizontalHeading, out position, out Quaternion routeRotation);
             rotation = routeRotation;
             friction = defaultSurfaceFriction;
@@ -629,7 +638,8 @@ namespace CargoStack
                         routeRotation,
                         index,
                         groundMask,
-                        out groundContacts[index]))
+                        out groundContacts[index],
+                        probeWorldDown: true))
                 {
                     return false;
                 }

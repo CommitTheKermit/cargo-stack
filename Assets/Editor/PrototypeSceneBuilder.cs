@@ -4,6 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.Rendering;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
@@ -47,6 +48,9 @@ namespace CargoStack.EditorTools
         private const string TutorialCheckSquarePath = TutorialUiFolder + "/TutorialCheckSquare.png";
         private const string TutorialCheckRoundPath = TutorialUiFolder + "/TutorialCheckRound.png";
         private const string TutorialBadgePath = TutorialUiFolder + "/TutorialBadge.png";
+        private const string MainMenuUiFolder = "Assets/Art/UI/MainMenu";
+        private const string MainMenuPanelPath = MainMenuUiFolder + "/MainMenuPanel.png";
+        private const string MainMenuStageButtonPath = MainMenuUiFolder + "/StageButton.png";
         private const string GeneralObstacleFolder =
             "Assets/3D Enivronment Assets/Prefabs/GeneralPrefabs";
         private const string IceObstacleFolder =
@@ -228,12 +232,7 @@ namespace CargoStack.EditorTools
             var menuObject = new GameObject("MainMenu");
             var controller = menuObject.AddComponent<MainMenuController>();
             controller.Configure(visibleStages.ToArray());
-            Font titleFont = AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath);
-            Font bodyFont = AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath);
-            controller.SetFonts(
-                titleFont,
-                bodyFont);
-            controller.SetTutorialBadge(BuildTutorialMenuBadge());
+            BuildMainMenuUi(controller, visibleStages);
 
             EditorSceneManager.SaveScene(scene, MainMenuScenePath);
             EnsureSceneInBuildSettings(MainMenuScenePath, true);
@@ -447,12 +446,14 @@ namespace CargoStack.EditorTools
 
             if (definition.StageId == "stage-01")
             {
-                hud.enabled = false;
+                hud.SetUiVisible(false);
                 BuildTutorialGuide(
                     systems,
                     flow,
+                    tracker,
                     player.GetComponent<PlayerCargoInteractor>(),
-                    player.GetComponent<PlayerRopeInteractor>());
+                    player.GetComponent<PlayerRopeInteractor>(),
+                    tailgate);
             }
 
             resultScreen.Configure(flow, tracker);
@@ -1708,25 +1709,124 @@ namespace CargoStack.EditorTools
             return camera;
         }
 
-        private static RectTransform BuildTutorialMenuBadge()
+        private static void BuildMainMenuUi(
+            MainMenuController controller,
+            IReadOnlyList<StageDefinition> stages)
         {
-            Canvas canvas = CreateOverlayCanvas("Tutorial Badge UI", false);
-            Image badge = CreateUiImage(
-                "Tutorial Badge",
+            Canvas canvas = CreateOverlayCanvas("Main Menu UI", true);
+            Font titleFont = AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath);
+            Font bodyFont = AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath);
+
+            Image dim = CreateUiImage("Background Dim", canvas.transform, null);
+            dim.preserveAspect = false;
+            dim.color = new Color(0f, 0f, 0f, 0.12f);
+            RectTransform dimRect = dim.rectTransform;
+            dimRect.anchorMin = Vector2.zero;
+            dimRect.anchorMax = Vector2.one;
+            dimRect.offsetMin = Vector2.zero;
+            dimRect.offsetMax = Vector2.zero;
+
+            Image panel = CreateUiImage(
+                "Dispatch Panel",
                 canvas.transform,
-                LoadUiSprite(TutorialBadgePath, 512));
-            RectTransform rect = badge.rectTransform;
-            rect.anchorMin = new Vector2(0f, 1f);
-            rect.anchorMax = new Vector2(0f, 1f);
-            rect.pivot = new Vector2(1f, 0.5f);
-            return rect;
+                LoadUiSprite(MainMenuPanelPath, 2048));
+            RectTransform panelRect = panel.rectTransform;
+            panelRect.anchorMin = new Vector2(0f, 0.5f);
+            panelRect.anchorMax = panelRect.anchorMin;
+            panelRect.pivot = new Vector2(0f, 0.5f);
+            panelRect.anchoredPosition = new Vector2(18f, 0f);
+            panelRect.sizeDelta = new Vector2(510f, 1020f);
+
+            Text title = CreateUiText(
+                "Title", panel.transform, titleFont, "CARGO\nSTACK", 52,
+                new Color(0.96f, 0.98f, 0.98f), TextAnchor.MiddleLeft,
+                new Vector2(0.1f, 0.79f), new Vector2(0.9f, 0.91f));
+            title.lineSpacing = 0.82f;
+            CreateUiText(
+                "Section", panel.transform, bodyFont, "배송 경로 선택", 18,
+                new Color(0.98f, 0.72f, 0.18f), TextAnchor.MiddleLeft,
+                new Vector2(0.1f, 0.72f), new Vector2(0.9f, 0.76f));
+
+            Sprite buttonSprite = LoadUiSprite(MainMenuStageButtonPath, 2048);
+            var buttons = new Button[stages.Count];
+            for (int index = 0; index < stages.Count; index++)
+            {
+                Image visual = CreateUiImage(
+                    $"Stage Button {index + 1:00}", panel.transform, buttonSprite);
+                visual.preserveAspect = false;
+                visual.raycastTarget = true;
+                RectTransform rect = visual.rectTransform;
+                float top = 0.708f - index * 0.064f;
+                rect.anchorMin = new Vector2(0.1f, top - 0.058f);
+                rect.anchorMax = new Vector2(0.9f, top);
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+
+                Button button = visual.gameObject.AddComponent<Button>();
+                button.targetGraphic = visual;
+                ColorBlock colors = button.colors;
+                colors.normalColor = Color.white;
+                colors.highlightedColor = new Color(1f, 0.86f, 0.48f);
+                colors.pressedColor = new Color(0.82f, 0.72f, 0.46f);
+                colors.selectedColor = colors.highlightedColor;
+                button.colors = colors;
+                buttons[index] = button;
+
+                Text label = CreateUiText(
+                    "Label", visual.transform, bodyFont, stages[index].DisplayName, 22,
+                    new Color(0.03f, 0.10f, 0.17f), TextAnchor.MiddleLeft,
+                    new Vector2(0.08f, 0f), new Vector2(index == 0 ? 0.73f : 0.94f, 1f));
+                label.fontStyle = FontStyle.Bold;
+
+                if (index == 0)
+                {
+                    Image badge = CreateUiImage(
+                        "Tutorial Badge", visual.transform, LoadUiSprite(TutorialBadgePath, 512));
+                    RectTransform badgeRect = badge.rectTransform;
+                    badgeRect.anchorMin = new Vector2(0.74f, 0.15f);
+                    badgeRect.anchorMax = new Vector2(0.97f, 0.85f);
+                    badgeRect.offsetMin = Vector2.zero;
+                    badgeRect.offsetMax = Vector2.zero;
+                }
+            }
+
+            CreateUiText(
+                "Description Header", panel.transform, bodyFont, "배송 정보", 17,
+                new Color(0.98f, 0.72f, 0.18f), TextAnchor.MiddleLeft,
+                new Vector2(0.1f, 0.19f), new Vector2(0.9f, 0.23f));
+            Text description = CreateUiText(
+                "Description", panel.transform, bodyFont, stages[0].MenuDescription, 17,
+                new Color(0.78f, 0.83f, 0.86f), TextAnchor.UpperLeft,
+                new Vector2(0.1f, 0.08f), new Vector2(0.9f, 0.19f));
+            description.horizontalOverflow = HorizontalWrapMode.Wrap;
+
+            Image loading = CreateUiImage("Loading Panel", panel.transform, null);
+            loading.preserveAspect = false;
+            loading.color = new Color(0.03f, 0.07f, 0.11f, 0.94f);
+            RectTransform loadingRect = loading.rectTransform;
+            loadingRect.anchorMin = new Vector2(0.04f, 0.04f);
+            loadingRect.anchorMax = new Vector2(0.96f, 0.96f);
+            loadingRect.offsetMin = Vector2.zero;
+            loadingRect.offsetMax = Vector2.zero;
+            CreateUiText(
+                "Loading Text", loading.transform, bodyFont, "배송 준비 중...", 24,
+                Color.white, TextAnchor.MiddleCenter, Vector2.zero, Vector2.one);
+            loading.gameObject.SetActive(false);
+
+            new GameObject(
+                "EventSystem",
+                typeof(EventSystem),
+                typeof(StandaloneInputModule));
+            controller.ConfigureUi(buttons, description, loading.gameObject);
         }
 
         private static void BuildTutorialGuide(
             GameObject systems,
             GameFlow flow,
+            CargoTracker tracker,
             PlayerCargoInteractor cargoInteractor,
-            PlayerRopeInteractor ropeInteractor)
+            PlayerRopeInteractor ropeInteractor,
+            TruckTailgate tailgate)
         {
             Canvas canvas = CreateOverlayCanvas("Tutorial UI", true);
             Sprite squareCheck = LoadUiSprite(TutorialCheckSquarePath, 256);
@@ -1739,15 +1839,30 @@ namespace CargoStack.EditorTools
             Image[] loadingChecks = CreateTutorialMarkers(
                 loadingPanel.rectTransform,
                 squareCheck,
-                new[] { 0.513f, 0.405f, 0.297f, 0.188f, 0.079f },
+                new[] { 0.533f, 0.434f, 0.336f, 0.239f, 0.154f, 0.067f },
                 24f,
-                0.143f);
+                0.146f);
             Image[] loadingProgress = CreateTutorialMarkers(
                 loadingPanel.rectTransform,
                 roundCheck,
-                new[] { 0.710f, 0.710f, 0.710f, 0.710f, 0.710f },
+                new[] { 0.714f, 0.714f, 0.714f, 0.714f, 0.714f, 0.714f },
                 18f,
-                new[] { 0.143f, 0.322f, 0.500f, 0.678f, 0.857f });
+                new[] { 0.140f, 0.278f, 0.417f, 0.555f, 0.696f, 0.838f });
+
+            var countObject = new GameObject("Cargo Count");
+            countObject.transform.SetParent(loadingPanel.transform, false);
+            Text cargoCount = countObject.AddComponent<Text>();
+            cargoCount.font = AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath);
+            cargoCount.fontSize = 16;
+            cargoCount.fontStyle = FontStyle.Bold;
+            cargoCount.alignment = TextAnchor.MiddleRight;
+            cargoCount.color = new Color(0.03f, 0.10f, 0.17f);
+            cargoCount.raycastTarget = false;
+            RectTransform countRect = cargoCount.rectTransform;
+            countRect.anchorMin = new Vector2(0.59f, 0.205f);
+            countRect.anchorMax = new Vector2(0.91f, 0.273f);
+            countRect.offsetMin = Vector2.zero;
+            countRect.offsetMax = Vector2.zero;
 
             Image drivingPanel = CreateTutorialPanel(
                 "Driving Tutorial",
@@ -1769,8 +1884,11 @@ namespace CargoStack.EditorTools
             drivingPanel.gameObject.SetActive(false);
             systems.AddComponent<TutorialGuide>().Configure(
                 flow,
+                tracker,
                 cargoInteractor,
                 ropeInteractor,
+                tailgate,
+                cargoCount,
                 loadingPanel.gameObject,
                 drivingPanel.gameObject,
                 loadingChecks,
@@ -1785,6 +1903,7 @@ namespace CargoStack.EditorTools
             Canvas canvas = holder.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 20;
+            holder.AddComponent<GraphicRaycaster>();
 
             if (scaleWithScreen)
             {
@@ -1856,6 +1975,34 @@ namespace CargoStack.EditorTools
             image.preserveAspect = true;
             image.raycastTarget = false;
             return image;
+        }
+
+        private static Text CreateUiText(
+            string name,
+            Transform parent,
+            Font font,
+            string value,
+            int fontSize,
+            Color color,
+            TextAnchor alignment,
+            Vector2 anchorMin,
+            Vector2 anchorMax)
+        {
+            var holder = new GameObject(name);
+            holder.transform.SetParent(parent, false);
+            Text text = holder.AddComponent<Text>();
+            text.font = font;
+            text.text = value;
+            text.fontSize = fontSize;
+            text.color = color;
+            text.alignment = alignment;
+            text.raycastTarget = false;
+            RectTransform rect = text.rectTransform;
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+            return text;
         }
 
         private static Sprite LoadUiSprite(string path, int maxSize)
