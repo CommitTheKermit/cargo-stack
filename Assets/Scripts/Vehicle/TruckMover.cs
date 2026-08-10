@@ -105,10 +105,17 @@ namespace CargoStack
         private float testReverse;
         private float testSteering;
         private float steeringAngleDegrees;
+        private bool launchedByExplosion;
 
         public event Action Arrived;
 
         public float Speed { get; private set; }
+
+        /// <summary>폭발 충격으로 차체가 키네마틱 경로 주행을 벗어났는지.</summary>
+        public bool IsLaunchedByExplosion => launchedByExplosion;
+
+        /// <summary>가장 최근 폭발 직후 차체에 남은 실제 Rigidbody 속도.</summary>
+        public Vector3 ExplosionVelocity { get; private set; }
 
         /// <summary>현재 경로 중심에서 오른쪽을 양수로 잰 실제 횡이탈 거리.</summary>
         public float LateralDriftOffset { get; private set; }
@@ -151,6 +158,11 @@ namespace CargoStack
 
         public void BeginDrive()
         {
+            if (launchedByExplosion)
+            {
+                return;
+            }
+
             isDriving = true;
             if (autopilotForTesting)
             {
@@ -165,6 +177,52 @@ namespace CargoStack
                 Speed = 0f;
                 planarVelocity = Vector3.zero;
             }
+        }
+
+        /// <summary>
+        /// 키네마틱 경로 주행 중인 차체를 실제 동적 Rigidbody로 전환해 폭발 충격을 받게 한다.
+        /// 폭발은 주행 경로를 보정하는 연출이 아니라, 차체에 남는 속도와 중력으로 처리한다.
+        /// </summary>
+        public void ReceiveExplosionImpulse(Vector3 explosionCenter, float impulse, float radius)
+        {
+            if (launchedByExplosion || body == null)
+            {
+                return;
+            }
+
+            launchedByExplosion = true;
+            isDriving = false;
+            float inheritedSpeed = Mathf.Max(0f, Speed);
+            Speed = 0f;
+            planarVelocity = Vector3.zero;
+
+            body.isKinematic = false;
+            body.useGravity = true;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
+            body.linearVelocity = transform.right * inheritedSpeed;
+            body.angularVelocity = Vector3.zero;
+
+            float appliedImpulse = Mathf.Max(impulse, 0f);
+            body.AddExplosionForce(
+                appliedImpulse,
+                explosionCenter,
+                Mathf.Max(radius, 0.1f),
+                1.8f,
+                ForceMode.Impulse);
+
+            // 폭발 중심이 차체와 겹치거나 옆에 있어도 최소한의 상승 성분은 보장한다.
+            if (body.linearVelocity.y < 8f)
+            {
+                body.AddForce(
+                    Vector3.up * (8f - body.linearVelocity.y),
+                    ForceMode.VelocityChange);
+            }
+
+            body.AddTorque(
+                transform.forward * appliedImpulse * 0.12f
+                + transform.up * appliedImpulse * 0.08f,
+                ForceMode.Impulse);
+            ExplosionVelocity = body.linearVelocity;
         }
 
         /// <summary>기존 난이도 회귀 테스트가 같은 속도 프로필로 경로를 완주하도록 한다.</summary>
@@ -216,7 +274,7 @@ namespace CargoStack
 
         private void FixedUpdate()
         {
-            if (!isDriving)
+            if (!isDriving || launchedByExplosion)
             {
                 return;
             }

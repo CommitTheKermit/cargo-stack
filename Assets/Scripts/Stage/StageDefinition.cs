@@ -28,6 +28,9 @@ namespace CargoStack
         [Tooltip("이 스테이지에서 쓸 수 있는 로프 개수. 0이면 배치만으로 풀어야 한다.")]
         [SerializeField, Min(0)] private int ropeCount = 2;
 
+        [Tooltip("주행 중 원거리에서 트럭으로 날아오는 폭발 나무 수.")]
+        [SerializeField, Min(0)] private int flyingTreeHazardCount;
+
         public string StageId => stageId;
         public string SceneName => sceneName;
         public StageTheme Theme => theme;
@@ -40,6 +43,7 @@ namespace CargoStack
         public IReadOnlyList<StageCargoDefinition> Cargo => cargo;
         public int CargoCount => cargo.Length;
         public int RopeCount => ropeCount;
+        public int FlyingTreeHazardCount => flyingTreeHazardCount;
 
         public Vector3[] CopyRouteControlPoints()
         {
@@ -103,6 +107,12 @@ namespace CargoStack
             if (ropeCount < 0)
             {
                 throw new InvalidOperationException($"{name}: 로프 개수는 음수일 수 없다.");
+            }
+
+            if (flyingTreeHazardCount < 0)
+            {
+                throw new InvalidOperationException(
+                    $"{name}: 폭발 비행 나무 수는 음수일 수 없다.");
             }
 
             for (int index = 0; index < cargo.Length; index++)

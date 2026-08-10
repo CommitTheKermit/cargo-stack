@@ -530,6 +530,126 @@ namespace CargoStack.EditorTools
             return models.ToArray();
         }
 
+        /// <summary>
+        /// 기존 기본 나무 에셋을 사용해, 트럭보다 앞선 진행도에서 원거리 발사점으로부터
+        /// 날아오는 폭발 위험물을 만든다. 씬에 손으로 배치하지 않아도 StageDefinition의
+        /// 개수만으로 항상 같은 위치와 순서로 재생성된다.
+        /// </summary>
+        public static GameObject CreateFlyingTreeHazards(
+            RoutePath route,
+            string sceneName,
+            TruckMover truck,
+            int groundLayer,
+            int count,
+            float groundDrop)
+        {
+            if (route == null)
+            {
+                throw new ArgumentNullException(nameof(route));
+            }
+
+            if (truck == null)
+            {
+                throw new ArgumentNullException(nameof(truck));
+            }
+
+            if (count <= 0)
+            {
+                return null;
+            }
+
+            GameObject[] trees = DiscoverModels(TreeFolderKeyword);
+            if (trees.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    "폭발 비행 나무에 쓸 Low Poly Tree Pack 모델을 찾지 못했다.");
+            }
+
+            Material treeMaterial = EnsureColorsheetMaterial(
+                TreeMaterialPath,
+                TreeFolderKeyword,
+                DefaultTreeColorPreference);
+            var root = new GameObject("FlyingTreeHazards").transform;
+            var random = new System.Random(StableHash(sceneName + ":FlyingTreeHazards"));
+
+            for (int index = 0; index < count; index++)
+            {
+                float impactProgress = Mathf.Lerp(
+                    0.18f,
+                    0.84f,
+                    count == 1 ? 0.5f : index / (count - 1f));
+                float launchProgress = Mathf.Clamp01(impactProgress - 0.10f);
+                float distance = route.TotalLength * impactProgress;
+                Vector3 routePoint = route.PositionAt(distance);
+                Vector3 side = SideDirection(route, distance, route.TotalLength);
+                Vector3 along = TangentDirection(route, distance, route.TotalLength);
+                int sideSign = index % 2 == 0 ? -1 : 1;
+                float lateralDistance = 26f + (float)random.NextDouble() * 9f;
+                float forwardDistance = 16f + (float)random.NextDouble() * 8f;
+                Vector3 launchPosition = routePoint
+                    + side * (sideSign * lateralDistance)
+                    + along * forwardDistance;
+                launchPosition.y = routePoint.y + 7f + (float)random.NextDouble() * 3f;
+
+                GameObject hazard = new($"FlyingTree_{index:00}");
+                hazard.transform.SetParent(root, false);
+                hazard.transform.position = launchPosition;
+
+                GameObject model = trees[random.Next(trees.Length)];
+                var visual = (GameObject)PrefabUtility.InstantiatePrefab(model);
+                visual.name = "TreeVisual";
+                visual.transform.SetParent(hazard.transform, false);
+                float randomYaw = (float)random.NextDouble() * 360f;
+                visual.transform.SetLocalPositionAndRotation(
+                    Vector3.zero,
+                    Quaternion.Euler(0f, randomYaw, 0f));
+
+                foreach (Renderer renderer in visual.GetComponentsInChildren<Renderer>(true))
+                {
+                    renderer.sharedMaterial = treeMaterial;
+                    renderer.shadowCastingMode = ShadowCastingMode.On;
+                }
+
+                Bounds bounds = GetRendererBounds(visual);
+                if (bounds.size.y > 1e-4f)
+                {
+                    float targetHeight = Mathf.Lerp(4.8f, 6.2f, (float)random.NextDouble());
+                    visual.transform.localScale *= targetHeight / bounds.size.y;
+                }
+
+                // 원본 나무의 높이(+Y)를 비행 중인 나무의 앞(+Z)으로 눕힌다.
+                // 높이 정규화는 회전 전에 해야 모델마다 길이가 달라지지 않는다.
+                visual.transform.localRotation = Quaternion.Euler(90f, randomYaw, 0f);
+                bounds = GetRendererBounds(visual);
+
+                CapsuleCollider hitbox = hazard.AddComponent<CapsuleCollider>();
+                hitbox.direction = 2;
+                hitbox.center = hazard.transform.InverseTransformPoint(bounds.center);
+                hitbox.radius = Mathf.Max(0.45f, Mathf.Min(bounds.extents.x, bounds.extents.y) * 0.72f);
+                hitbox.height = Mathf.Max(hitbox.radius * 2f, bounds.size.z * 0.9f);
+
+                Rigidbody body = hazard.AddComponent<Rigidbody>();
+                body.mass = 180f;
+                body.linearDamping = 0.05f;
+                body.angularDamping = 0.15f;
+
+                var flyingTree = hazard.AddComponent<FlyingTreeHazard>();
+                flyingTree.Configure(
+                    truck,
+                    launchProgress,
+                    impactProgress,
+                    1 << groundLayer,
+                    Mathf.Lerp(0.9f, 1.25f, (float)random.NextDouble()),
+                    Mathf.Lerp(900f, 1250f, (float)random.NextDouble()),
+                    Mathf.Lerp(25f, 36f, (float)random.NextDouble()));
+            }
+
+            Debug.Log(
+                $"[CargoStack] 폭발 비행 나무 배치 완료: {count}그루 "
+                + "(차량보다 10% 진행도 앞서, 원거리 좌우 교차 발사)");
+            return root.gameObject;
+        }
+
         private static bool IsExcluded(string path)
         {
             if (path.StartsWith(WinterAssetRoot, StringComparison.Ordinal))

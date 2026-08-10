@@ -379,6 +379,17 @@ namespace CargoStack.EditorTools
             // 아래 짐·플레이어·카메라가 모두 이 자세를 기준으로 자리를 잡으므로 순서를 지켜야 한다.
             mover.SnapToStart();
 
+            if (definition.FlyingTreeHazardCount > 0)
+            {
+                EnvironmentScatter.CreateFlyingTreeHazards(
+                    route,
+                    definition.SceneName,
+                    mover,
+                    groundLayer,
+                    definition.FlyingTreeHazardCount,
+                    GroundDropBelowRoad);
+            }
+
             List<Cargo> cargo = BuildCargo(
                 truck.transform,
                 cargoPhysics,
