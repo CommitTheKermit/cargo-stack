@@ -1892,6 +1892,7 @@ namespace CargoStack.EditorTools
             Canvas canvas = holder.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 20;
+            holder.AddComponent<GraphicRaycaster>();
 
             if (scaleWithScreen)
             {

@@ -1,6 +1,8 @@
 using System.Collections;
+using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 using UnityEngine.TestTools;
 using UnityEngine.UI;
@@ -69,7 +71,22 @@ namespace CargoStack.Tests
                 Object.FindAnyObjectByType<MainMenuController>();
             Assert.NotNull(menu, "MainMenuController가 없다");
             yield return null;
-            GameObject.Find("Stage Button 01").GetComponent<Button>().onClick.Invoke();
+
+            GameObject buttonObject = GameObject.Find("Stage Button 01");
+            RectTransform buttonRect = buttonObject.GetComponent<RectTransform>();
+            var pointer = new PointerEventData(EventSystem.current)
+            {
+                button = PointerEventData.InputButton.Left,
+                position = RectTransformUtility.WorldToScreenPoint(
+                    null,
+                    buttonRect.TransformPoint(buttonRect.rect.center)),
+            };
+            var hits = new List<RaycastResult>();
+            EventSystem.current.RaycastAll(pointer, hits);
+            Assert.IsTrue(hits.Exists(hit => hit.gameObject == buttonObject),
+                "마우스 레이캐스트가 스테이지 버튼에 닿지 않는다");
+
+            ExecuteEvents.Execute(buttonObject, pointer, ExecuteEvents.pointerClickHandler);
             yield return null;
 
             Assert.AreEqual(
