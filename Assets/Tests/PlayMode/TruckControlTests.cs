@@ -262,7 +262,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 실제_바퀴_접점을_따르고_지면이_사라지면_정지한다()
+        public IEnumerator 실제_접지를_따르되_탐지_실패가_아닌_경계벽에서_멈춘다()
         {
             yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
 
@@ -273,11 +273,13 @@ namespace CargoStack.Tests
                 : null;
             MeshCollider road = GameObject.Find("RoadSurface")?.GetComponent<MeshCollider>();
             MeshCollider ground = GameObject.Find("GroundSurface")?.GetComponent<MeshCollider>();
+            Transform boundary = GameObject.Find("GroundBoundary")?.transform.Find("Boundary_End");
             Assert.NotNull(flow);
             Assert.NotNull(truck);
             Assert.NotNull(wheels);
             Assert.NotNull(road);
             Assert.NotNull(ground);
+            Assert.NotNull(boundary);
             GameObject.Find("Environment")?.SetActive(false);
 
             truck.SetControlInputForTesting(0f, 0f, 0f);
@@ -323,21 +325,42 @@ namespace CargoStack.Tests
             road.enabled = false;
             ground.enabled = false;
             Physics.SyncTransforms();
-            yield return new WaitForFixedUpdate();
-            Vector3 stoppedPosition = truck.transform.position;
+            Vector3 fallbackStart = truck.transform.position;
             for (int step = 0; step < 10; step++)
             {
                 yield return new WaitForFixedUpdate();
             }
 
-            float unsupportedMovement = Vector3.Distance(stoppedPosition, truck.transform.position);
-            Assert.That(truck.Speed, Is.LessThan(0.01f), "바퀴 아래가 비었는데도 가속이 계속됐다");
-            Assert.That(unsupportedMovement, Is.LessThan(0.03f),
-                "바퀴 아래가 비었는데도 트럭이 빈 공간으로 진행했다");
+            float fallbackMovement = Vector3.Distance(fallbackStart, truck.transform.position);
+            Assert.That(truck.Speed, Is.GreaterThan(2f),
+                "접지 탐지 실패가 트럭을 정지시켰다");
+            Assert.That(fallbackMovement, Is.GreaterThan(0.2f),
+                "접지 탐지 실패 후 경로 자세로 계속 주행하지 못했다");
+
+            Vector3 wallHeading = Vector3.ProjectOnPlane(
+                truck.transform.right,
+                Vector3.up).normalized;
+            boundary.SetPositionAndRotation(
+                truck.transform.position + wallHeading * 3f + Vector3.up,
+                Quaternion.LookRotation(wallHeading, Vector3.up));
+            Physics.SyncTransforms();
+            yield return new WaitForFixedUpdate();
+            Vector3 stoppedPosition = truck.transform.position;
+            for (int step = 0; step < 5; step++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            float boundaryMovement = Vector3.Distance(stoppedPosition, truck.transform.position);
+            Assert.That(truck.Speed, Is.LessThan(0.01f),
+                "트럭이 투명한 맵 경계벽에서 멈추지 않았다");
+            Assert.That(boundaryMovement, Is.LessThan(0.03f),
+                "트럭이 투명한 맵 경계벽을 통과했다");
             Debug.Log(
-                $"[CargoStack] 실제 접지: 차체 롤 {bodyRoll:0.00}°, "
+                $"[CargoStack] 실제 접지/경계: 차체 롤 {bodyRoll:0.00}°, "
                 + $"최대 바퀴 압축 {maximumCompression:0.000}m, "
-                + $"무지면 이동 {unsupportedMovement:0.000}m");
+                + $"접지 실패 후 주행 {fallbackMovement:0.000}m, "
+                + $"경계 후 이동 {boundaryMovement:0.000}m");
             truck.ClearControlInputForTesting();
         }
 
