@@ -20,8 +20,8 @@ namespace CargoStack
         [Tooltip("도로 중심선 제어점. 곡선이 이 점들을 모두 지나간다.")]
         [SerializeField] private Vector3[] controlPoints = Array.Empty<Vector3>();
 
-        [Tooltip("제어점 사이를 몇 조각으로 나눠 펼지. 클수록 커브가 매끄럽지만 도로 블록이 늘어난다.")]
-        [SerializeField] private int samplesPerSegment = 14;
+        [Tooltip("제어점 사이를 몇 조각으로 나눠 펼지. 클수록 도로 메시가 매끄럽다.")]
+        [SerializeField] private int samplesPerSegment = 64;
 
         private Vector3[] points;
         private float[] travel;

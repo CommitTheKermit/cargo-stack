@@ -93,9 +93,12 @@ namespace CargoStack.Tests
             TruckWheelAnimator wheels = truck != null
                 ? truck.GetComponent<TruckWheelAnimator>()
                 : null;
+            int groundMask = LayerMask.GetMask("Ground");
             Assert.NotNull(flow);
             Assert.NotNull(truck);
             Assert.NotNull(wheels);
+            Assert.AreNotEqual(0, groundMask);
+            GameObject.Find("Environment")?.SetActive(false);
             yield return null;
 
             Vector3 start = truck.transform.position;
@@ -170,6 +173,33 @@ namespace CargoStack.Tests
                 "조향 입력이 트럭의 실제 이동 경로를 바꾸지 못했다");
             Assert.That(Vector3.Angle(headingBeforeTurn, truck.transform.right), Is.GreaterThan(5f),
                 "앞바퀴 조향각이 차체의 회전 반경에 반영되지 않았다");
+            Assert.That(Mathf.Abs(truck.DriftRollDegrees), Is.LessThanOrEqualTo(10.05f),
+                "고속 조향 롤이 서스펜션 접지 한계를 넘었다");
+
+            yield return null;
+            wheels.SendMessage("LateUpdate");
+            Vector3 up = truck.transform.up;
+            float maximumWheelClearance = 0f;
+            for (int index = 0; index < wheels.WheelCount; index++)
+            {
+                const float RayStart = 1f;
+                var ray = new Ray(wheels.GetSuspensionRoot(index).position + up * RayStart, -up);
+                Assert.IsTrue(Physics.Raycast(
+                        ray,
+                        out RaycastHit hit,
+                        3f,
+                        groundMask,
+                        QueryTriggerInteraction.Ignore),
+                    $"고속 조향 중 {index}번 바퀴 아래에 지면이 없다");
+                float clearance = hit.distance - RayStart - wheels.WheelRadius;
+                maximumWheelClearance = Mathf.Max(maximumWheelClearance, Mathf.Abs(clearance));
+                Debug.Log(
+                    $"[CargoStack] 고속 조향 접지 {index}: 롤 {truck.DriftRollDegrees:0.00}°, "
+                    + $"간격 {clearance:0.000}m, 서스펜션 "
+                    + $"{wheels.GetSuspensionRoot(index).localPosition.y - wheels.GetRestLocalPosition(index).y:0.000}m");
+            }
+            Assert.That(maximumWheelClearance, Is.LessThanOrEqualTo(0.025f),
+                $"고속 조향 중 바퀴가 지면에서 떨어졌다: {maximumWheelClearance:0.000}m");
 
             truck.SetControlInputForTesting(0f, 1f, 0f);
             for (int step = 0; step < 130; step++)

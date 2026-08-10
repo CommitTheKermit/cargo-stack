@@ -75,9 +75,12 @@ namespace CargoStack
         [Tooltip("차체 횡가속도 1m/s²당 보이는 롤 각도.")]
         [SerializeField, Min(0f)] private float rollDegreesPerAcceleration = 1.4f;
 
+        [Tooltip("한쪽 바퀴가 서스펜션 드룹 한계를 넘어 뜨지 않는 최대 차체 롤 각도.")]
+        [SerializeField, Range(0f, 15f)] private float maxGroundedRollDegrees = 10f;
+
         [Header("차체")]
-        [SerializeField] private float frontAxleOffset = 1.75f;
-        [SerializeField] private float rearAxleOffset = -1.75f;
+        [SerializeField] private float frontAxleOffset = 2.09f;
+        [SerializeField] private float rearAxleOffset = -1.70f;
 
         [Tooltip("도로 표면에서 차체 원점까지의 높이.")]
         [SerializeField] private float rideHeight = 0.75f;
@@ -191,7 +194,7 @@ namespace CargoStack
             planarVelocity = Vector3.zero;
             ResetSlipFeedback();
             SurfaceFriction = SampleSurfaceFriction(routePosition);
-            GetPoseAt(routePosition, steeringHeading, 0f, out Vector3 position, out Quaternion rotation);
+            GetPoseAt(steeringHeading, 0f, out Vector3 position, out Quaternion rotation);
             transform.SetPositionAndRotation(position, rotation);
         }
 
@@ -277,7 +280,6 @@ namespace CargoStack
             pathHeading = PathHeadingAt(travelled);
             UpdateSlipFeedback(routePosition, pathHeading, appliedLateralAcceleration, deltaTime);
             GetPoseAt(
-                routePosition,
                 steeringHeading,
                 DriftRollDegrees,
                 out Vector3 position,
@@ -291,7 +293,6 @@ namespace CargoStack
                 planarVelocity = Vector3.zero;
                 routePosition = path.PositionAt(travelled);
                 GetPoseAt(
-                    routePosition,
                     steeringHeading,
                     DriftRollDegrees,
                     out position,
@@ -440,14 +441,20 @@ namespace CargoStack
                 : steeringHeading;
             DriftYawDegrees = Vector3.SignedAngle(steeringHeading, velocityHeading, Vector3.up);
 
-            float targetRoll = -appliedLateralAcceleration * rollDegreesPerAcceleration;
-            DriftRollDegrees = Mathf.SmoothDamp(
-                DriftRollDegrees,
-                targetRoll,
-                ref rollVelocity,
-                0.18f,
-                Mathf.Infinity,
-                deltaTime);
+            float targetRoll = Mathf.Clamp(
+                -appliedLateralAcceleration * rollDegreesPerAcceleration,
+                -maxGroundedRollDegrees,
+                maxGroundedRollDegrees);
+            DriftRollDegrees = Mathf.Clamp(
+                Mathf.SmoothDamp(
+                    DriftRollDegrees,
+                    targetRoll,
+                    ref rollVelocity,
+                    0.18f,
+                    Mathf.Infinity,
+                    deltaTime),
+                -maxGroundedRollDegrees,
+                maxGroundedRollDegrees);
         }
 
         private float CalculateCorneringDemand(float distance, float speed)
@@ -506,7 +513,6 @@ namespace CargoStack
         }
 
         private void GetPoseAt(
-            Vector3 routePosition,
             Vector3 horizontalHeading,
             float roll,
             out Vector3 position,
@@ -525,9 +531,32 @@ namespace CargoStack
 
             Quaternion pathRotation = Quaternion.LookRotation(bodyHeading, Vector3.up)
                 * Quaternion.Euler(0f, -90f, 0f);
-            position = new Vector3(planarPosition.x, routePosition.y, planarPosition.z)
-                + pathRotation * Vector3.up * rideHeight;
+            float axleMidpointOffset = (frontAxleOffset + rearAxleOffset) * 0.5f;
+            Vector3 axleContactMidpoint = new(
+                planarPosition.x,
+                (front.y + rear.y) * 0.5f,
+                planarPosition.z);
+            axleContactMidpoint += horizontalHeading * axleMidpointOffset;
+            position = axleContactMidpoint
+                - pathRotation * new Vector3(axleMidpointOffset, -rideHeight, 0f);
             rotation = pathRotation * Quaternion.Euler(roll, 0f, 0f);
+
+            if (wheelAnimator != null && wheelAnimator.WheelCount > 0)
+            {
+                Vector3 suspensionUp = rotation * Vector3.up;
+                float requiredCorrection = float.NegativeInfinity;
+                for (int index = 0; index < wheelAnimator.WheelCount; index++)
+                {
+                    Vector3 wheel = wheelAnimator.GetRestLocalPosition(index);
+                    Vector3 wheelBottom = position
+                        + rotation * (wheel + Vector3.down * wheelAnimator.WheelRadius);
+                    float roadHeight = path.PositionAt(travelled + wheel.x).y;
+                    float correction = (roadHeight - wheelBottom.y) / suspensionUp.y;
+                    requiredCorrection = Mathf.Max(requiredCorrection, correction);
+                }
+
+                position += suspensionUp * requiredCorrection;
+            }
         }
     }
 }

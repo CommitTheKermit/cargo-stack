@@ -100,9 +100,6 @@ namespace CargoStack.EditorTools
         private const float GroundBoundaryThickness = 0.6f;
         private const float GroundBoundaryOverlap = 1.5f;
 
-        /// <summary>도로 조각을 이웃과 겹치게 늘리는 배율. 커브 바깥쪽이 벌어지는 것을 막는다.</summary>
-        private const float RoadBlockOverlap = 1.5f;
-
         /// <summary>
         /// 화물을 집을 수 있는 거리. 플레이어 발밑에서 화물 무게중심까지 잰다.
         /// 조준은 화면 중앙 레이캐스트가 하므로, 이 값을 늘려도 엉뚱한 상자가 집히지는 않는다.
@@ -303,7 +300,8 @@ namespace CargoStack.EditorTools
                 roadMaterial,
                 roadPhysics,
                 definition.CopyRouteControlPoints(),
-                definition.SceneName);
+                definition.SceneName,
+                out MeshCollider roadCollider);
 
             // 도로 아래에 경로 고저를 따라가는 넓은 지면을 깐다. 겨울에는 눈 지면이다.
             BuildGround(route, groundMaterial, groundLayer, definition.SceneName);
@@ -339,6 +337,7 @@ namespace CargoStack.EditorTools
                 bedMaterial,
                 bedPhysics,
                 groundLayer,
+                roadCollider,
                 out Transform bedAnchor,
                 out TruckTailgate tailgate);
             var mover = truck.GetComponent<TruckMover>();
@@ -426,7 +425,7 @@ namespace CargoStack.EditorTools
             AssetDatabase.SaveAssets();
 
             Debug.Log($"[CargoStack] {definition.StageId} 씬 생성 완료: {scenePath} " +
-                $"(경로 {route.TotalLength:0.0}m, 도착 {goalDistance:0.0}m, 도로 조각 {route.SampleCount - 1}개, 화물 {cargo.Count}개)");
+                $"(경로 {route.TotalLength:0.0}m, 도착 {goalDistance:0.0}m, 도로 구간 {route.SampleCount - 1}개, 화물 {cargo.Count}개)");
         }
 
         private static void BuildRoadObstacles(
@@ -576,57 +575,30 @@ namespace CargoStack.EditorTools
         }
 
         /// <summary>
-        /// 도로를 깐다. 보이는 면과 부딪히는 면을 분리한다.
+        /// 도로를 깐다. 보이는 면과 부딪히는 면을 같은 메시로 만든다.
         ///
-        /// 보이는 면은 중심선을 따라 뜬 리본 메시 하나다. 처음에는 겹쳐 깐 상자를 그대로 보여
-        /// 줬는데, 겹친 윗면이 같은 평면이라 커브마다 z-파이팅 얼룩이 생겼다.
-        /// 부딪히는 면은 여전히 상자다. 커브 바깥쪽 호가 안쪽보다 길어서 상자 길이를 딱 맞추면
-        /// 바깥 차선에 구멍이 뚫리므로, 이웃과 겹치게 늘려 깐다. 겹쳐도 이제는 안 보인다.
+        /// 보이는 면과 부딪히는 면이 한 리본 메시를 공유해 이음매와 높이가 어긋나지 않는다.
         /// </summary>
         private static RoutePath BuildRoute(
             int layer,
             Material material,
             PhysicsMaterial physics,
             Vector3[] controlPoints,
-            string sceneName)
+            string sceneName,
+            out MeshCollider roadCollider)
         {
             var holder = new GameObject("Route");
             RoutePath route = holder.AddComponent<RoutePath>();
             route.SetControlPoints(controlPoints);
 
-            var surface = new GameObject("RoadSurface");
+            var surface = new GameObject("RoadSurface") { layer = layer };
             surface.transform.SetParent(holder.transform, false);
-            surface.AddComponent<MeshFilter>().sharedMesh = EnsureRoadMesh(route, sceneName);
+            Mesh roadMesh = EnsureRoadMesh(route, sceneName);
+            surface.AddComponent<MeshFilter>().sharedMesh = roadMesh;
             surface.AddComponent<MeshRenderer>().sharedMaterial = material;
-
-            var blocks = new GameObject("RoadColliders").transform;
-            blocks.SetParent(holder.transform, false);
-
-            for (int i = 0; i < route.SampleCount - 1; i++)
-            {
-                Vector3 from = route.SampleAt(i);
-                Vector3 to = route.SampleAt(i + 1);
-                Vector3 step = to - from;
-                float length = step.magnitude;
-                if (length < 1e-4f)
-                {
-                    continue;
-                }
-
-                // 조각의 로컬 +X 가 진행 방향이 되도록 LookRotation 을 90도 돌린다.
-                Quaternion rotation = Quaternion.LookRotation(step / length, Vector3.up)
-                    * Quaternion.Euler(0f, -90f, 0f);
-
-                var block = new GameObject($"Road_{i:000}") { layer = layer };
-                block.transform.SetParent(blocks, false);
-                block.transform.SetPositionAndRotation(
-                    (from + to) * 0.5f - rotation * Vector3.up * (RoadThickness * 0.5f),
-                    rotation);
-
-                BoxCollider box = block.AddComponent<BoxCollider>();
-                box.size = new Vector3(length * RoadBlockOverlap, RoadThickness, RoadWidth);
-                box.sharedMaterial = physics;
-            }
+            roadCollider = surface.AddComponent<MeshCollider>();
+            roadCollider.sharedMesh = roadMesh;
+            roadCollider.sharedMaterial = physics;
 
             return route;
         }
@@ -857,14 +829,14 @@ namespace CargoStack.EditorTools
         }
 
         /// <summary>
-        /// 잔디 지면 리본 메시. 도로 리본과 같은 방식으로 중심선을 따라 좌우로 넓게 편다.
-        /// 옆에서 봐도 두께가 보이도록 치맛단을 아래로 내려 붙인다.
+        /// 잔디 지면 리본 메시. 도로 아래는 비워 두고 양옆만 만들어 겹친 면의 z-파이팅을 막는다.
+        /// 옆에서 봐도 두께가 보이도록 바깥쪽 치맛단을 아래로 내려 붙인다.
         /// </summary>
         private static Mesh EnsureGroundMesh(RoutePath route, string sceneName)
         {
             int count = route.SampleCount;
-            var vertices = new Vector3[count * 4];
-            var uvs = new Vector2[count * 4];
+            var vertices = new Vector3[count * 6];
+            var uvs = new Vector2[count * 6];
             float distance = 0f;
 
             for (int i = 0; i < count; i++)
@@ -879,40 +851,48 @@ namespace CargoStack.EditorTools
                     - route.SampleAt(Mathf.Max(i - 1, 0));
                 heading.y = 0f;
 
-                Vector3 side = Vector3.Cross(Vector3.up, heading.normalized) * GroundHalfWidth;
+                Vector3 sideDirection = Vector3.Cross(Vector3.up, heading.normalized);
+                Vector3 outerSide = sideDirection * GroundHalfWidth;
+                Vector3 innerSide = sideDirection * (RoadWidth * 0.5f);
                 Vector3 top = point + Vector3.down * GroundDropBelowRoad;
                 Vector3 skirt = Vector3.down * GroundThickness;
 
-                vertices[i * 4 + 0] = top - side;
-                vertices[i * 4 + 1] = top + side;
-                vertices[i * 4 + 2] = top - side + skirt;
-                vertices[i * 4 + 3] = top + side + skirt;
+                vertices[i * 6 + 0] = top - outerSide;
+                vertices[i * 6 + 1] = top - innerSide;
+                vertices[i * 6 + 2] = top - outerSide + skirt;
+                vertices[i * 6 + 3] = top + innerSide;
+                vertices[i * 6 + 4] = top + outerSide;
+                vertices[i * 6 + 5] = top + outerSide + skirt;
 
                 float u = distance / GroundTextureTileSize;
-                float v = (GroundHalfWidth * 2f) / GroundTextureTileSize;
-                uvs[i * 4 + 0] = new Vector2(u, 0f);
-                uvs[i * 4 + 1] = new Vector2(u, v);
-                uvs[i * 4 + 2] = uvs[i * 4 + 0];
-                uvs[i * 4 + 3] = uvs[i * 4 + 1];
+                float innerLeftV = (GroundHalfWidth - RoadWidth * 0.5f) / GroundTextureTileSize;
+                float innerRightV = (GroundHalfWidth + RoadWidth * 0.5f) / GroundTextureTileSize;
+                float outerRightV = (GroundHalfWidth * 2f) / GroundTextureTileSize;
+                uvs[i * 6 + 0] = new Vector2(u, 0f);
+                uvs[i * 6 + 1] = new Vector2(u, innerLeftV);
+                uvs[i * 6 + 2] = uvs[i * 6 + 0];
+                uvs[i * 6 + 3] = new Vector2(u, innerRightV);
+                uvs[i * 6 + 4] = new Vector2(u, outerRightV);
+                uvs[i * 6 + 5] = uvs[i * 6 + 4];
             }
 
-            var triangles = new List<int>((count - 1) * 18);
+            var triangles = new List<int>((count - 1) * 24);
             for (int i = 0; i < count - 1; i++)
             {
-                int a = i * 4;
-                int b = (i + 1) * 4;
+                int a = i * 6;
+                int b = (i + 1) * 6;
 
-                // 윗면
+                // 도로를 비워 둔 좌우 윗면
                 triangles.Add(a + 0); triangles.Add(b + 0); triangles.Add(a + 1);
                 triangles.Add(b + 0); triangles.Add(b + 1); triangles.Add(a + 1);
+                triangles.Add(a + 3); triangles.Add(b + 3); triangles.Add(a + 4);
+                triangles.Add(b + 3); triangles.Add(b + 4); triangles.Add(a + 4);
 
-                // 왼쪽 치맛단
+                // 바깥쪽 치맛단
                 triangles.Add(a + 0); triangles.Add(a + 2); triangles.Add(b + 0);
                 triangles.Add(a + 2); triangles.Add(b + 2); triangles.Add(b + 0);
-
-                // 오른쪽 치맛단
-                triangles.Add(a + 1); triangles.Add(b + 1); triangles.Add(a + 3);
-                triangles.Add(b + 1); triangles.Add(b + 3); triangles.Add(a + 3);
+                triangles.Add(a + 4); triangles.Add(b + 4); triangles.Add(a + 5);
+                triangles.Add(b + 4); triangles.Add(b + 5); triangles.Add(a + 5);
             }
 
             var mesh = new Mesh { name = $"{sceneName}_Ground" };
@@ -948,6 +928,7 @@ namespace CargoStack.EditorTools
             Material bedMaterial,
             PhysicsMaterial bedPhysics,
             int groundLayer,
+            MeshCollider roadCollider,
             out Transform bedAnchor,
             out TruckTailgate tailgate)
         {
@@ -1025,7 +1006,7 @@ namespace CargoStack.EditorTools
                 "BedAnchor",
                 truck.transform,
                 new Vector3(BedCenterX, BedFloorTop, BedCenterZ));
-            AddBlueTruckVisual(truck.transform, tailgatePivot, groundLayer);
+            AddBlueTruckVisual(truck.transform, tailgatePivot, groundLayer, roadCollider);
             return truck;
         }
 
@@ -1069,7 +1050,8 @@ namespace CargoStack.EditorTools
         private static void AddBlueTruckVisual(
             Transform truck,
             Transform tailgatePivot,
-            int groundLayer)
+            int groundLayer,
+            MeshCollider roadCollider)
         {
             BlueTruckWheelMeshGenerator.Generate();
             Material material = EnsureBlueTruckMaterial();
@@ -1113,7 +1095,8 @@ namespace CargoStack.EditorTools
                 suspensionRoots,
                 spinRoots,
                 BlueTruckWheelMeshGenerator.WheelRadius,
-                1 << groundLayer);
+                1 << groundLayer,
+                roadCollider);
         }
 
         private static void AddCabGlass(Transform parent)

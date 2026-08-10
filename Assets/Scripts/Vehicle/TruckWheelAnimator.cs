@@ -14,17 +14,16 @@ namespace CargoStack
         [SerializeField] private Transform[] suspensionRoots;
         [SerializeField] private Transform[] spinRoots;
         [SerializeField] private float wheelRadius = 0.515f;
-        [SerializeField] private float compressionTravel = 0.18f;
-        [SerializeField] private float droopTravel = 0.10f;
-        [SerializeField] private float suspensionSmoothTime = 0.10f;
-        [SerializeField] private float rayStartAboveCenter = 0.45f;
-        [SerializeField] private float rayLength = 1.35f;
+        [SerializeField] private float compressionTravel = 0.50f;
+        [SerializeField] private float droopTravel = 0.50f;
+        [SerializeField] private float rayStartAboveCenter = 0.70f;
+        [SerializeField] private float rayLength = 1.80f;
         [SerializeField] private float teleportThreshold = 1.5f;
         [SerializeField] private LayerMask groundMask;
+        [SerializeField] private Collider roadCollider;
 
         private Vector3[] restLocalPositions;
         private Quaternion[] restLocalRotations;
-        private float[] suspensionVelocities;
         private Vector3 previousPosition;
         private Vector3 previousForward;
         private float spinAngleDegrees;
@@ -51,7 +50,8 @@ namespace CargoStack
             Transform[] suspensions,
             Transform[] spins,
             float radius,
-            LayerMask collisionMask)
+            LayerMask collisionMask,
+            Collider roadSurface)
         {
             if (suspensions == null || spins == null || suspensions.Length != 4 || spins.Length != 4)
             {
@@ -62,6 +62,7 @@ namespace CargoStack
             spinRoots = spins;
             wheelRadius = radius;
             groundMask = collisionMask;
+            roadCollider = roadSurface;
             InitializeState();
         }
 
@@ -97,7 +98,7 @@ namespace CargoStack
 
             UpdateSpin();
             UpdateSteering();
-            UpdateSuspension(Time.deltaTime);
+            UpdateSuspension();
             previousPosition = transform.position;
             previousForward = transform.right;
         }
@@ -113,7 +114,6 @@ namespace CargoStack
 
             restLocalPositions = new Vector3[4];
             restLocalRotations = new Quaternion[4];
-            suspensionVelocities = new float[4];
             for (int index = 0; index < 4; index++)
             {
                 restLocalPositions[index] = suspensionRoots[index].localPosition;
@@ -157,7 +157,7 @@ namespace CargoStack
             suspensionRoots[3].localRotation = restLocalRotations[3];
         }
 
-        private void UpdateSuspension(float deltaTime)
+        private void UpdateSuspension()
         {
             Vector3 up = transform.up;
             for (int index = 0; index < suspensionRoots.Length; index++)
@@ -165,13 +165,24 @@ namespace CargoStack
                 Vector3 restWorld = transform.TransformPoint(restLocalPositions[index]);
                 Vector3 rayOrigin = restWorld + up * rayStartAboveCenter;
                 float targetOffset = 0f;
+                var ray = new Ray(rayOrigin, -up);
+                RaycastHit hit = default;
+                bool foundGround = roadCollider != null
+                    && roadCollider.Raycast(ray, out hit, rayLength);
                 if (Physics.Raycast(
-                        rayOrigin,
-                        -up,
-                        out RaycastHit hit,
+                        ray,
+                        out RaycastHit candidate,
                         rayLength,
                         groundMask,
-                        QueryTriggerInteraction.Ignore))
+                        QueryTriggerInteraction.Ignore)
+                    && !candidate.collider.name.StartsWith("Boundary_", StringComparison.Ordinal)
+                    && (!foundGround || candidate.distance < hit.distance))
+                {
+                    hit = candidate;
+                    foundGround = true;
+                }
+
+                if (foundGround)
                 {
                     Vector3 targetCenter = hit.point + up * wheelRadius;
                     float targetLocalY = transform.InverseTransformPoint(targetCenter).y;
@@ -183,15 +194,8 @@ namespace CargoStack
 
                 Transform suspension = suspensionRoots[index];
                 Vector3 current = suspension.localPosition;
-                float smoothedY = Mathf.SmoothDamp(
-                    current.y,
-                    restLocalPositions[index].y + targetOffset,
-                    ref suspensionVelocities[index],
-                    suspensionSmoothTime,
-                    Mathf.Infinity,
-                    deltaTime);
                 current.x = restLocalPositions[index].x;
-                current.y = smoothedY;
+                current.y = restLocalPositions[index].y + targetOffset;
                 current.z = restLocalPositions[index].z;
                 suspension.localPosition = current;
             }

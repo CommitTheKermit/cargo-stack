@@ -403,7 +403,8 @@ namespace CargoStack.Tests
             Cargo[] cargo = Object.FindObjectsByType<Cargo>();
             GameObject roadSurface = GameObject.Find("RoadSurface");
             GameObject groundSurface = GameObject.Find("GroundSurface");
-            BoxCollider roadCollider = GameObject.Find("Road_000")?.GetComponent<BoxCollider>();
+            MeshCollider roadCollider = roadSurface?.GetComponent<MeshCollider>();
+            MeshCollider groundCollider = groundSurface?.GetComponent<MeshCollider>();
             GameObject environment = GameObject.Find("Environment");
 
             Assert.NotNull(context, "겨울 스테이지의 StageContext가 없다");
@@ -502,6 +503,12 @@ namespace CargoStack.Tests
                 "트럭이 바퀴 아래 얼음 PhysicsMaterial의 마찰을 읽지 않는다");
 
             Assert.NotNull(groundSurface, "눈 지면 표면이 없다");
+            Assert.NotNull(groundCollider, "눈 지면 충돌면이 없다");
+            Vector3 routeMiddle = route.PositionAt(route.TotalLength * 0.5f);
+            var centerRay = new Ray(routeMiddle + Vector3.up * 2f, Vector3.down);
+            Assert.IsTrue(roadCollider.Raycast(centerRay, out _, 4f), "도로 중심에 도로 표면이 없다");
+            Assert.IsFalse(groundCollider.Raycast(centerRay, out _, 4f),
+                "도로 아래에 지면이 겹쳐 z-파이팅이 발생한다");
             Material groundMaterial = groundSurface.GetComponent<MeshRenderer>().sharedMaterial;
             Assert.NotNull(groundMaterial, "눈 지면 재질이 없다");
             Assert.AreEqual("SnowGround", groundMaterial.name);
@@ -620,7 +627,7 @@ namespace CargoStack.Tests
             StageContext context = Object.FindAnyObjectByType<StageContext>();
             RoutePath route = Object.FindAnyObjectByType<RoutePath>();
             Cargo[] cargo = Object.FindObjectsByType<Cargo>();
-            BoxCollider roadCollider = GameObject.Find("Road_000")?.GetComponent<BoxCollider>();
+            MeshCollider roadCollider = GameObject.Find("RoadSurface")?.GetComponent<MeshCollider>();
 
             Assert.NotNull(context, "새 설원 스테이지의 StageContext가 없다");
             Assert.AreEqual("stage-06", context.Definition.StageId);

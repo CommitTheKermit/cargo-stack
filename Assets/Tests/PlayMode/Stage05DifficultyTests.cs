@@ -97,13 +97,7 @@ namespace CargoStack.Tests
                 frictionCombine = PhysicsMaterialCombine.Maximum,
             };
 
-            foreach (BoxCollider road in Object.FindObjectsByType<BoxCollider>())
-            {
-                if (road.name.StartsWith("Road_"))
-                {
-                    road.sharedMaterial = highGrip;
-                }
-            }
+            GameObject.Find("RoadSurface").GetComponent<MeshCollider>().sharedMaterial = highGrip;
 
             DriveMetrics metrics = default;
             yield return DriveToResult(value => metrics = value);

@@ -9,6 +9,57 @@ namespace CargoStack.Tests
     public class Stage07DifficultyTests
     {
         [UnityTest]
+        public IEnumerator 대형_방지턱을_달리는_동안_네_바퀴가_도로를_관통하지_않는다()
+        {
+            yield return SceneManager.LoadSceneAsync("Stage07_HardBumps", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            TruckWheelAnimator wheels = truck.GetComponent<TruckWheelAnimator>();
+            MeshCollider road = GameObject.Find("RoadSurface").GetComponent<MeshCollider>();
+            float minimumClearance = float.PositiveInfinity;
+            float maximumClearance = float.NegativeInfinity;
+            float maximumSuspensionTravel = 0f;
+
+            yield return null;
+            wheels.SendMessage("LateUpdate");
+            MeasureWheelClearance(
+                wheels,
+                road,
+                ref minimumClearance,
+                ref maximumClearance,
+                ref maximumSuspensionTravel);
+
+            Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
+            flow.StartDriving();
+            float remaining = 25f;
+            while (flow.State != GameState.Result && remaining > 0f)
+            {
+                yield return null;
+                wheels.SendMessage("LateUpdate");
+                remaining -= Time.unscaledDeltaTime;
+                MeasureWheelClearance(
+                    wheels,
+                    road,
+                    ref minimumClearance,
+                    ref maximumClearance,
+                    ref maximumSuspensionTravel);
+            }
+
+            Time.timeScale = 1f;
+            Assert.AreEqual(GameState.Result, flow.State, "Stage07 접지 주행이 제한 시간 안에 끝나지 않았다");
+            Debug.Log(
+                $"[CargoStack] Stage07 바퀴 접지: "
+                + $"최소 {minimumClearance:0.000}m, 최대 {maximumClearance:0.000}m, "
+                + $"최대 서스펜션 이동 {maximumSuspensionTravel:0.000}m");
+            Assert.That(minimumClearance, Is.GreaterThanOrEqualTo(-0.015f),
+                "주행 중 바퀴가 도로를 관통했다");
+            Assert.That(maximumClearance, Is.LessThanOrEqualTo(0.025f),
+                "주행 중 바퀴가 도로에서 떨어졌다");
+        }
+
+        [UnityTest]
         public IEnumerator 로프_세개로_두층_화물을_눌러도_대형_방지턱에서_강하게_튀지만_전멸하지_않는다()
         {
             yield return SceneManager.LoadSceneAsync("Stage07_HardBumps", LoadSceneMode.Single);
@@ -138,6 +189,30 @@ namespace CargoStack.Tests
         public void TearDown()
         {
             Time.timeScale = 1f;
+        }
+
+        private static void MeasureWheelClearance(
+            TruckWheelAnimator wheels,
+            MeshCollider road,
+            ref float minimum,
+            ref float maximum,
+            ref float maximumSuspensionTravel)
+        {
+            const float RayStart = 1f;
+            for (int index = 0; index < wheels.WheelCount; index++)
+            {
+                Vector3 up = wheels.transform.up;
+                Ray ray = new(wheels.GetSuspensionRoot(index).position + up * RayStart, -up);
+                Assert.IsTrue(road.Raycast(ray, out RaycastHit hit, 3f),
+                    $"{index}번 바퀴 아래에 도로가 없다");
+                float clearance = hit.distance - RayStart - wheels.WheelRadius;
+                minimum = Mathf.Min(minimum, clearance);
+                maximum = Mathf.Max(maximum, clearance);
+                float travel = Mathf.Abs(
+                    wheels.GetSuspensionRoot(index).localPosition.y
+                    - wheels.GetRestLocalPosition(index).y);
+                maximumSuspensionTravel = Mathf.Max(maximumSuspensionTravel, travel);
+            }
         }
     }
 }

@@ -487,7 +487,10 @@ namespace CargoStack.Tests
                 Transform suspension = wheelAnimator.GetSuspensionRoot(index);
                 Transform spin = wheelAnimator.GetSpinRoot(index);
                 Assert.AreSame(suspension, spin.parent, $"{index}번 회전 루트가 서스펜션 아래에 없다");
-                AssertVector3(suspension.localPosition, wheelPivots[index], $"{index}번 바퀴 축");
+                AssertVector3(
+                    wheelAnimator.GetRestLocalPosition(index),
+                    wheelPivots[index],
+                    $"{index}번 바퀴 축");
 
                 MeshFilter[] wheelFilters = spin.GetComponentsInChildren<MeshFilter>(true);
                 Assert.AreEqual(1, wheelFilters.Length, $"{index}번 실제 바퀴 메시가 하나가 아니다");
@@ -591,7 +594,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 한쪽_바퀴만_단차를_밟으면_서스펜션이_제한내에서_압축되고_부드럽게_복원된다()
+        public IEnumerator 한쪽_바퀴만_단차를_밟으면_서스펜션이_제한내에서_즉시_접지한다()
         {
             yield return new WaitForSeconds(0.30f);
 
@@ -627,14 +630,7 @@ namespace CargoStack.Tests
 
             Object.Destroy(step);
             yield return null;
-            float firstRecoveryOffset = steppedWheel.localPosition.y - steppedRest.y;
-            Assert.That(firstRecoveryOffset, Is.GreaterThan(0.03f),
-                "단차가 사라진 한 프레임 만에 서스펜션이 순간이동했다");
-            Assert.That(firstRecoveryOffset, Is.LessThanOrEqualTo(compressedOffset + 0.002f),
-                "단차 제거 뒤 서스펜션이 반대 방향으로 더 압축됐다");
-
-            yield return new WaitForSeconds(0.65f);
-
+            wheelAnimator.SendMessage("LateUpdate");
             Assert.That(Mathf.Abs(steppedWheel.localPosition.y - steppedRest.y), Is.LessThan(0.015f),
                 "서스펜션이 평지의 기본 축 위치로 복원되지 않았다");
         }
