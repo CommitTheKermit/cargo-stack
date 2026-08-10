@@ -30,6 +30,19 @@ namespace CargoStack
         public int TotalCount => tracked.Count;
         public int DroppedCount => dropped.Count;
         public int RemainingCount => tracked.Count - dropped.Count;
+        public int LoadedCount
+        {
+            get
+            {
+                int count = 0;
+                foreach (Cargo cargo in tracked)
+                {
+                    count += cargo != null && IsOnBoard(cargo) ? 1 : 0;
+                }
+
+                return count;
+            }
+        }
 
         /// <summary>모두 옮기면 3개, 하나라도 잃으면 2개, 반 이상 잃으면 1개, 전부 잃으면 0개.</summary>
         public int StarRating => CalculateStars(TotalCount, DroppedCount);
