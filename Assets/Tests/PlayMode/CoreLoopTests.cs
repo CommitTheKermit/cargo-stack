@@ -964,7 +964,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator F를_오래_누를수록_화물이_더_빠르게_카메라_정면으로_던져진다()
+        public IEnumerator E를_짧게_누르면_놓고_길게_누르면_강하게_던진다()
         {
             Vector3 testOrigin = new Vector3(1000f, 10f, 1000f);
             GameObject cameraObject = new GameObject("Throw Test Camera");
@@ -986,16 +986,22 @@ namespace CargoStack.Tests
             Vector3 inheritedVelocity = Vector3.right * 2f;
             Assert.IsTrue(interactor.TryPickUp(cargo), "투척 검사용 화물을 집지 못했다");
             player.Body.linearVelocity = inheritedVelocity;
-            Assert.IsTrue(interactor.TryThrowHeldCargo(0f), "짧게 누른 F 투척이 실패했다");
-            Assert.That(body.linearVelocity, Is.EqualTo(inheritedVelocity + Vector3.forward * 4f),
-                "짧게 누른 투척이 최소 속도로 카메라 정면을 향하지 않았다");
+            Assert.IsFalse(interactor.TryReleaseHeldCargo(0.24f),
+                "E를 짧게 눌렀는데 유효한 배치면 없이 화물을 놓았다");
+            Assert.AreSame(cargo, interactor.HeldCargo,
+                "E를 짧게 누른 동작이 화물을 던졌다");
+
+            Assert.IsTrue(interactor.TryReleaseHeldCargo(0.25f),
+                "E 투척 최소 유지 시간에서 던지지 못했다");
+            Assert.That(body.linearVelocity, Is.EqualTo(inheritedVelocity + Vector3.forward * 10f),
+                "최소 충전 투척이 10m/s로 카메라 정면을 향하지 않았다");
 
             Assert.IsTrue(interactor.TryPickUp(cargo), "최대 충전 검사용 화물을 다시 집지 못했다");
             player.Body.linearVelocity = inheritedVelocity;
-            Assert.IsTrue(interactor.TryThrowHeldCargo(1f), "1초 충전한 F 투척이 실패했다");
-            Assert.That(body.linearVelocity, Is.EqualTo(inheritedVelocity + Vector3.forward * 12f),
+            Assert.IsTrue(interactor.TryReleaseHeldCargo(1f), "1초 충전한 E 투척이 실패했다");
+            Assert.That(body.linearVelocity, Is.EqualTo(inheritedVelocity + Vector3.forward * 24f),
                 "1초 충전한 투척이 최대 속도로 카메라 정면을 향하지 않았다");
-            Debug.Log("[CargoStack] 투척 속도: 짧게=4m/s, 1초 충전=12m/s");
+            Debug.Log("[CargoStack] E 투척 속도: 0.25초=10m/s, 1초=24m/s");
 
             Object.Destroy(cameraObject);
             Object.Destroy(anchorObject);
