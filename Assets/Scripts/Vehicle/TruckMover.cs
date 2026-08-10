@@ -123,6 +123,8 @@ namespace CargoStack
 
         public float Speed01 => maxSpeed > 0f ? Mathf.Clamp01(Mathf.Abs(Speed) / maxSpeed) : 0f;
 
+        public bool IsDriving => isDriving;
+
         public float SteeringAngleDegrees => steeringAngleDegrees;
 
         public float Progress => Mathf.InverseLerp(startDistance, goalDistance, travelled);

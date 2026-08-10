@@ -19,8 +19,11 @@ namespace CargoStack
 
         private TruckMover mover;
         private AudioSource source;
+        private AudioSource hornSource;
+        private AudioClip hornClip;
 
         public bool HasClip => engineLoop != null;
+        public bool HasHornClip => hornClip != null;
 
         public void Configure(AudioClip clip)
         {
@@ -37,6 +40,14 @@ namespace CargoStack
             source.dopplerLevel = 0.15f;
             source.minDistance = 3f;
             source.maxDistance = 45f;
+
+            hornClip = Resources.Load<AudioClip>("Audio/truck_horn");
+            hornSource = gameObject.AddComponent<AudioSource>();
+            hornSource.playOnAwake = false;
+            hornSource.spatialBlend = 1f;
+            hornSource.dopplerLevel = 0.15f;
+            hornSource.minDistance = 4f;
+            hornSource.maxDistance = 50f;
         }
 
         private void Start()
@@ -54,6 +65,11 @@ namespace CargoStack
 
         private void Update()
         {
+            if (Input.GetKeyDown(KeyCode.Space))
+            {
+                TryHonk();
+            }
+
             if (source == null || !source.isPlaying)
             {
                 return;
@@ -63,6 +79,17 @@ namespace CargoStack
             float response = 1f - Mathf.Exp(-responseSpeed * Time.deltaTime);
             source.pitch = Mathf.Lerp(source.pitch, Mathf.Lerp(idlePitch, drivingPitch, speed), response);
             source.volume = Mathf.Lerp(source.volume, Mathf.Lerp(idleVolume, drivingVolume, speed), response);
+        }
+
+        public bool TryHonk()
+        {
+            if (!mover.IsDriving || hornClip == null)
+            {
+                return false;
+            }
+
+            hornSource.PlayOneShot(hornClip, 0.8f);
+            return true;
         }
     }
 }

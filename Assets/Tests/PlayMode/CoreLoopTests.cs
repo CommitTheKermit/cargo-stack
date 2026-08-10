@@ -123,6 +123,10 @@ namespace CargoStack.Tests
             TruckEngineAudio engineAudio = truck.GetComponent<TruckEngineAudio>();
             Assert.NotNull(engineAudio, "Truck에 엔진 오디오가 없다");
             Assert.IsTrue(engineAudio.HasClip, "엔진 루프 클립이 배선되지 않았다");
+            Assert.IsTrue(engineAudio.HasHornClip, "경적 클립이 배선되지 않았다");
+            Assert.IsFalse(engineAudio.TryHonk(), "적재 중인데 경적이 울렸다");
+            truck.BeginDrive();
+            Assert.IsTrue(engineAudio.TryHonk(), "주행 중인데 경적이 울리지 않았다");
 
             foreach (Cargo item in GetCargo())
             {
