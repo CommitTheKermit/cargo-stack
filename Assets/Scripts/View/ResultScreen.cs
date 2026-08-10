@@ -18,6 +18,8 @@ namespace CargoStack
     {
         [SerializeField] private GameFlow flow;
         [SerializeField] private CargoTracker tracker;
+        [SerializeField] private Font titleFont;
+        [SerializeField] private Font bodyFont;
 
         /// <summary>별 하나가 다 커지는 데 걸리는 시간.</summary>
         private const float StarGrowSeconds = 0.28f;
@@ -39,8 +41,11 @@ namespace CargoStack
         private AudioSource source;
         private AudioClip popClip;
         private GUIStyle titleStyle;
+        private GUIStyle eyebrowStyle;
+        private GUIStyle scoreStyle;
         private GUIStyle summaryStyle;
-        private GUIStyle buttonStyle;
+        private GUIStyle primaryButtonStyle;
+        private GUIStyle secondaryButtonStyle;
 
         /// <summary>결과 화면이 열린 시각. 아직 안 열렸으면 음수다.</summary>
         private float shownAt = -1f;
@@ -52,12 +57,20 @@ namespace CargoStack
 
         /// <summary>지금 화면에 떠 있는 별 개수(연출이 끝난 것 기준). 테스트가 이 값을 본다.</summary>
         public int AwardedStars => awardedStars;
-        public Font UiFont => Resources.Load<Font>("Pretendard-Regular");
+        public Font UiFont => bodyFont != null
+            ? bodyFont
+            : Resources.Load<Font>("Pretendard-Regular");
 
         public void Configure(GameFlow gameFlow, CargoTracker cargoTracker)
         {
             flow = gameFlow;
             tracker = cargoTracker;
+        }
+
+        public void SetFonts(Font title, Font body)
+        {
+            titleFont = title;
+            bodyFont = body;
         }
 
         /// <summary>
@@ -149,45 +162,70 @@ namespace CargoStack
 
             EnsureResources();
 
-            // 주행 화면을 어둡게 덮어 글씨와 별이 읽히게 한다.
-            GUI.color = new Color(0f, 0f, 0f, 0.72f);
+            // 도착 장면은 남기고, 배송 보고서를 읽을 만큼만 배경을 눌러 준다.
+            GUI.color = new Color(0f, 0f, 0f, 0.16f);
             GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), fillTexture);
             GUI.color = Color.white;
 
-            float starSize = Mathf.Clamp(Screen.height * 0.13f, 48f, 140f);
-            float titleSize = Mathf.Clamp(Screen.height * 0.055f, 26f, 58f);
-            float bodySize = Mathf.Clamp(Screen.height * 0.028f, 15f, 30f);
+            float panelWidth = Mathf.Clamp(Screen.width * 0.42f, 360f, 620f);
+            float panelProgress = shownAt < 0f
+                ? 0f
+                : Mathf.SmoothStep(0f, 1f, (Time.unscaledTime - shownAt) / 0.22f);
+            float panelLeft = Mathf.Lerp(-panelWidth, 0f, panelProgress);
+            float padding = Mathf.Clamp(panelWidth * 0.1f, 34f, 58f);
+            float contentWidth = panelWidth - padding * 2f;
+            float starSize = Mathf.Clamp(Screen.height * 0.085f, 42f, 92f);
+            float titleSize = Mathf.Clamp(Screen.height * 0.052f, 28f, 52f);
+            float bodySize = Mathf.Clamp(Screen.height * 0.026f, 15f, 26f);
+
+            DrawFill(new Rect(panelLeft, 0f, panelWidth, Screen.height),
+                new Color(0.055f, 0.075f, 0.095f, 0.96f));
+            DrawFill(new Rect(panelLeft + panelWidth - 7f, 0f, 7f, Screen.height),
+                new Color(0.95f, 0.71f, 0.2f));
 
             titleStyle.fontSize = Mathf.RoundToInt(titleSize);
+            eyebrowStyle.fontSize = Mathf.RoundToInt(bodySize * 0.72f);
+            scoreStyle.fontSize = Mathf.RoundToInt(titleSize * 1.7f);
             summaryStyle.fontSize = Mathf.RoundToInt(bodySize);
-            buttonStyle.fontSize = Mathf.RoundToInt(bodySize);
+            primaryButtonStyle.fontSize = Mathf.RoundToInt(bodySize);
+            secondaryButtonStyle.fontSize = Mathf.RoundToInt(bodySize * 0.9f);
 
-            float starRowY = Screen.height * 0.24f;
-            DrawStars(starRowY, starSize);
+            float left = panelLeft + padding;
+            float y = Screen.height * 0.09f;
+            GUI.Label(new Rect(left, y, contentWidth, bodySize * 1.5f),
+                "DELIVERY REPORT", eyebrowStyle);
 
-            float y = starRowY + starSize * 1.5f;
-            GUI.Label(new Rect(0f, y, Screen.width, titleSize * 1.5f), DescribeOutcome(), titleStyle);
+            y += bodySize * 1.7f;
+            GUI.Label(new Rect(left, y, contentWidth, titleSize * 1.4f),
+                DescribeOutcome(), titleStyle);
 
-            y += titleSize * 1.7f;
-            GUI.Label(new Rect(0f, y, Screen.width, bodySize * 1.6f), DescribeCargo(), summaryStyle);
+            y += titleSize * 1.65f;
+            DrawStars(new Rect(left, y, contentWidth, starSize), starSize);
 
-            y += bodySize * 3.2f;
-            DrawButtons(y, bodySize);
+            y += starSize * 1.35f;
+            GUI.Label(new Rect(left, y, contentWidth, titleSize * 1.9f),
+                DescribeScore(), scoreStyle);
+
+            y += titleSize * 1.85f;
+            GUI.Label(new Rect(left, y, contentWidth, bodySize * 1.7f),
+                DescribeCargo(), summaryStyle);
+
+            DrawButtons(panelLeft, panelWidth, padding, bodySize);
         }
 
         /// <summary>
         /// 별 세 자리를 그린다. 못 받은 자리도 어둡게 남겨 둬야 "몇 개 중 몇 개"인지 읽힌다.
         /// 못 받은 별은 처음부터 제자리에 있고, 받은 별만 커지며 나타난다.
         /// </summary>
-        private void DrawStars(float top, float size)
+        private void DrawStars(Rect bounds, float size)
         {
             float gap = size * 0.28f;
             float totalWidth = MaximumStars * size + (MaximumStars - 1) * gap;
-            float left = (Screen.width - totalWidth) * 0.5f;
+            float left = bounds.x + (bounds.width - totalWidth) * 0.5f;
 
             for (int index = 0; index < MaximumStars; index++)
             {
-                var slot = new Rect(left + index * (size + gap), top, size, size);
+                var slot = new Rect(left + index * (size + gap), bounds.y, size, size);
 
                 if (index >= awardedStars)
                 {
@@ -215,20 +253,22 @@ namespace CargoStack
             }
         }
 
-        private void DrawButtons(float top, float bodySize)
+        private void DrawButtons(float panelLeft, float panelWidth, float padding, float bodySize)
         {
-            float buttonWidth = Mathf.Clamp(Screen.width * 0.16f, 140f, 260f);
-            float buttonHeight = bodySize * 2.4f;
-            float gap = buttonWidth * 0.12f;
-            float left = (Screen.width - (buttonWidth * 2f + gap)) * 0.5f;
+            float buttonWidth = panelWidth - padding * 2f;
+            float buttonHeight = Mathf.Clamp(bodySize * 2.6f, 48f, 66f);
+            float gap = bodySize * 0.55f;
+            float left = panelLeft + padding;
+            float top = Screen.height - padding - buttonHeight * 2f - gap;
 
-            if (GUI.Button(new Rect(left, top, buttonWidth, buttonHeight), "다시 하기", buttonStyle))
+            if (GUI.Button(new Rect(left, top, buttonWidth, buttonHeight),
+                "다시 배송", primaryButtonStyle))
             {
                 flow.Restart();
             }
 
-            var second = new Rect(left + buttonWidth + gap, top, buttonWidth, buttonHeight);
-            if (GUI.Button(second, "스테이지 선택", buttonStyle))
+            var second = new Rect(left, top + buttonHeight + gap, buttonWidth, buttonHeight);
+            if (GUI.Button(second, "스테이지 선택", secondaryButtonStyle))
             {
                 flow.ReturnToMainMenu();
             }
@@ -241,7 +281,12 @@ namespace CargoStack
                 return "완벽 배송";
             }
 
-            return awardedStars == 0 ? "배송 실패" : "도착";
+            return awardedStars == 0 ? "배송 실패" : "배송 완료";
+        }
+
+        private string DescribeScore()
+        {
+            return tracker == null ? "- / -" : $"{tracker.RemainingCount} / {tracker.TotalCount}";
         }
 
         private string DescribeCargo()
@@ -251,7 +296,14 @@ namespace CargoStack
                 return string.Empty;
             }
 
-            return $"짐 {tracker.RemainingCount} / {tracker.TotalCount} 지켜냄";
+            if (tracker.RemainingCount == tracker.TotalCount)
+            {
+                return $"화물 {tracker.TotalCount}개 모두 배송";
+            }
+
+            return tracker.RemainingCount == 0
+                ? "배송한 화물이 없습니다"
+                : $"화물 {tracker.RemainingCount}개 배송 · {tracker.DroppedCount}개 분실";
         }
 
         private void EnsureResources()
@@ -265,31 +317,91 @@ namespace CargoStack
             }
 
             var white = new Color(0.96f, 0.96f, 0.96f);
-            var dim = new Color(0.72f, 0.74f, 0.76f);
+            var dim = new Color(0.75f, 0.8f, 0.83f);
+            var yellow = new Color(0.95f, 0.71f, 0.2f);
 
             titleStyle = new GUIStyle
             {
-                font = UiFont,
+                font = titleFont,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = white },
+            };
+            eyebrowStyle = new GUIStyle
+            {
+                font = bodyFont,
+                alignment = TextAnchor.MiddleLeft,
+                normal = { textColor = yellow },
+            };
+            scoreStyle = new GUIStyle
+            {
+                font = titleFont,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = white },
             };
             summaryStyle = new GUIStyle
             {
-                font = UiFont,
+                font = bodyFont,
                 alignment = TextAnchor.MiddleCenter,
                 normal = { textColor = dim },
             };
-            buttonStyle = new GUIStyle(GUI.skin.button)
+            primaryButtonStyle = new GUIStyle
             {
-                font = UiFont,
+                font = bodyFont,
                 alignment = TextAnchor.MiddleCenter,
+                normal =
+                {
+                    textColor = new Color(0.055f, 0.075f, 0.095f),
+                    background = CreateSolidTexture(new Color(0.95f, 0.71f, 0.2f)),
+                },
+                hover =
+                {
+                    textColor = new Color(0.055f, 0.075f, 0.095f),
+                    background = CreateSolidTexture(new Color(1f, 0.8f, 0.32f)),
+                },
+                active =
+                {
+                    textColor = new Color(0.055f, 0.075f, 0.095f),
+                    background = CreateSolidTexture(new Color(0.84f, 0.61f, 0.14f)),
+                },
             };
+            secondaryButtonStyle = new GUIStyle
+            {
+                font = bodyFont,
+                alignment = TextAnchor.MiddleCenter,
+                normal =
+                {
+                    textColor = white,
+                    background = CreateSolidTexture(new Color(0.12f, 0.17f, 0.21f)),
+                },
+                hover =
+                {
+                    textColor = white,
+                    background = CreateSolidTexture(new Color(0.18f, 0.45f, 0.78f)),
+                },
+                active =
+                {
+                    textColor = white,
+                    background = CreateSolidTexture(new Color(0.12f, 0.34f, 0.63f)),
+                },
+            };
+        }
+
+        private void DrawFill(Rect rect, Color color)
+        {
+            GUI.color = color;
+            GUI.DrawTexture(rect, fillTexture);
+            GUI.color = Color.white;
         }
 
         private static Texture2D CreateFillTexture()
         {
+            return CreateSolidTexture(Color.white);
+        }
+
+        private static Texture2D CreateSolidTexture(Color color)
+        {
             var texture = new Texture2D(1, 1);
-            texture.SetPixel(0, 0, Color.white);
+            texture.SetPixel(0, 0, color);
             texture.Apply();
             return texture;
         }

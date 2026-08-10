@@ -416,6 +416,9 @@ namespace CargoStack.EditorTools
             }
 
             resultScreen.Configure(flow, tracker);
+            resultScreen.SetFonts(
+                AssetDatabase.LoadAssetAtPath<Font>(TitleFontPath),
+                AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath));
             ConfigureBackgroundMusic();
 
             EditorSceneManager.SaveScene(scene, scenePath);

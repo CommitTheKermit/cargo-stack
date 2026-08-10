@@ -5,9 +5,9 @@ using UnityEngine.SceneManagement;
 namespace CargoStack
 {
     /// <summary>
-    /// 메인 메뉴. 배경에는 실시간 적재·주행 데모가 흐르고(어두운 필터를 덮어 글씨가 읽히게 한다),
-    /// 그 위에 왼쪽 정렬한 미니멀한 스테이지 목록을 얹는다.
-    /// 목록은 마우스를 올린 항목 앞에 "&gt;" 커서가 붙고, 클릭하면 그 스테이지로 들어간다.
+    /// 메인 메뉴. 배경에는 실시간 적재·주행 데모가 흐르고,
+    /// 그 위에 배송 배차표를 닮은 패널과 스테이지 목록을 얹는다.
+    /// 목록은 마우스를 올린 항목에 안전색 스트랩이 붙고, 클릭하면 그 스테이지로 들어간다.
     /// 배경 데모는 MenuBackgroundDemo가 맡고, 이 스크립트는 필터와 글자만 그린다.
     /// </summary>
     [DisallowMultipleComponent]
@@ -18,16 +18,16 @@ namespace CargoStack
         [SerializeField] private Font titleFont;
         [SerializeField] private Font bodyFont;
 
-        [Tooltip("배경 데모를 덮는 검은 필터의 진하기(0~1). 클수록 어두워져 글씨가 잘 읽힌다.")]
-        [SerializeField, Range(0f, 1f)] private float overlayOpacity = 0.55f;
+        [Tooltip("패널 밖 배경 데모에 덮는 검은 필터의 진하기(0~1).")]
+        [SerializeField, Range(0f, 1f)] private float overlayOpacity = 0.12f;
 
         private GUIStyle titleStyle;
-        private GUIStyle taglineStyle;
         private GUIStyle sectionStyle;
         private GUIStyle optionStyle;
         private GUIStyle optionHoverStyle;
         private GUIStyle noteStyle;
         private GUIStyle descriptionStyle;
+        private GUIStyle loadingStyle;
         private Texture2D overlayTexture;
         private bool isLoading;
 
@@ -80,64 +80,60 @@ namespace CargoStack
             GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), overlayTexture);
             GUI.color = Color.white;
 
-            float left = Mathf.Max(48f, Screen.width * 0.08f);
-            float titleSize = Mathf.Clamp(Screen.height * 0.075f, 34f, 76f);
-            float optionSize = Mathf.Clamp(Screen.height * 0.032f, 18f, 34f);
+            float panelWidth = Mathf.Min(
+                Screen.width,
+                Mathf.Clamp(Screen.width * 0.34f, 320f, 500f));
+            float padding = Mathf.Clamp(panelWidth * 0.09f, 32f, 54f);
+            float contentWidth = panelWidth - padding * 2f;
+            float titleSize = Mathf.Clamp(Screen.height * 0.07f, 34f, 64f);
+            float optionSize = Mathf.Clamp(Screen.height * 0.027f, 17f, 28f);
+
+            DrawFill(new Rect(0f, 0f, panelWidth, Screen.height),
+                new Color(0.055f, 0.075f, 0.095f, 0.78f));
 
             titleStyle.fontSize = Mathf.RoundToInt(titleSize);
-            taglineStyle.fontSize = Mathf.RoundToInt(optionSize * 0.62f);
             sectionStyle.fontSize = Mathf.RoundToInt(optionSize * 0.6f);
             optionStyle.fontSize = Mathf.RoundToInt(optionSize);
             optionHoverStyle.fontSize = optionStyle.fontSize;
             noteStyle.fontSize = Mathf.RoundToInt(optionSize * 0.62f);
             descriptionStyle.fontSize = Mathf.RoundToInt(optionSize * 0.6f);
+            loadingStyle.fontSize = Mathf.RoundToInt(optionSize * 0.7f);
 
-            float y = Screen.height * 0.16f;
+            float y = Screen.height * 0.08f;
 
-            GUI.Label(new Rect(left, y, Screen.width - left, titleSize * 1.4f),
-                "CARGO STACK", titleStyle);
-            y += titleSize * 1.35f;
-            GUI.Label(new Rect(left, y, Screen.width - left, optionSize),
-                "짐을 쌓고, 출발시킨 뒤, 끝까지 지켜보세요.", taglineStyle);
+            GUI.Label(new Rect(padding, y, contentWidth, titleSize * 2.1f),
+                "CARGO\nSTACK", titleStyle);
+            y += titleSize * 2.05f;
 
-            y = Screen.height * 0.42f;
-            GUI.Label(new Rect(left, y, Screen.width - left, sectionStyle.fontSize * 1.6f),
-                "SELECT STAGE", sectionStyle);
+            y = Mathf.Max(y + optionSize * 2f, Screen.height * 0.37f);
+            GUI.Label(new Rect(padding, y, contentWidth, sectionStyle.fontSize * 1.6f),
+                "배송 경로 선택", sectionStyle);
             y += sectionStyle.fontSize * 2.1f;
 
-            float rowHeight = optionSize * 1.7f;
+            float rowHeight = optionSize * 1.62f;
+            int highlightedIndex = 0;
             for (int index = 0; index < stages.Length; index++)
             {
                 StageDefinition stage = stages[index];
-                var row = new Rect(left, y, Screen.width - left * 1.5f, rowHeight);
+                var row = new Rect(padding, y, contentWidth, rowHeight);
                 bool hover = !isLoading && row.Contains(Event.current.mousePosition);
 
-                float cursorWidth = optionSize * 1.1f;
                 if (hover)
                 {
-                    GUI.Label(new Rect(left, y, cursorWidth, rowHeight), ">", optionHoverStyle);
+                    highlightedIndex = index;
+                    DrawFill(row, new Color(0.18f, 0.45f, 0.78f, 0.28f));
+                    DrawFill(new Rect(row.x, row.y, 5f, row.height),
+                        new Color(0.95f, 0.71f, 0.2f));
                 }
 
-                var labelRect = new Rect(left + cursorWidth, y, row.width - cursorWidth, rowHeight);
+                var labelRect = new Rect(row.x + 18f, row.y, row.width - 18f, row.height);
                 GUI.Label(labelRect, stage.DisplayName, hover ? optionHoverStyle : optionStyle);
 
-                // 첫 스테이지는 추천 표시를 붙인다.
-                float nameWidth = (hover ? optionHoverStyle : optionStyle)
-                    .CalcSize(new GUIContent(stage.DisplayName)).x;
                 if (index == 0)
                 {
                     GUI.Label(
-                        new Rect(left + cursorWidth + nameWidth + 14f, y, 220f, rowHeight),
-                        "(추천)", noteStyle);
-                }
-
-                // 마우스를 올린 스테이지의 설명을 그 아래 작게 보여 준다.
-                if (hover && !string.IsNullOrEmpty(stage.MenuDescription))
-                {
-                    GUI.Label(
-                        new Rect(left + cursorWidth, y + rowHeight * 0.92f,
-                            Screen.width - left * 1.5f, rowHeight),
-                        stage.MenuDescription, descriptionStyle);
+                        new Rect(row.xMax - 62f, row.y, 62f, row.height),
+                        "추천", noteStyle);
                 }
 
                 if (GUI.Button(row, GUIContent.none, GUIStyle.none) && !isLoading)
@@ -145,14 +141,33 @@ namespace CargoStack
                     LoadStage(index);
                 }
 
-                y += rowHeight * (hover ? 1.7f : 1.25f);
+                DrawFill(new Rect(row.x, row.yMax - 1f, row.width, 1f),
+                    new Color(1f, 1f, 1f, 0.09f));
+                y += rowHeight;
+            }
+
+            StageDefinition highlighted = stages[highlightedIndex];
+            if (!string.IsNullOrEmpty(highlighted.MenuDescription))
+            {
+                GUI.Label(new Rect(padding + 18f, y + optionSize * 0.7f,
+                    contentWidth - 18f, optionSize * 2.8f),
+                    highlighted.MenuDescription, descriptionStyle);
             }
 
             if (isLoading)
             {
-                GUI.Label(new Rect(left, y + rowHeight, Screen.width - left, rowHeight),
-                    "불러오는 중...", noteStyle);
+                DrawFill(new Rect(0f, 0f, panelWidth, Screen.height),
+                    new Color(0.055f, 0.075f, 0.095f, 0.82f));
+                GUI.Label(new Rect(padding, Screen.height * 0.48f, contentWidth, rowHeight),
+                    "배송 준비 중...", loadingStyle);
             }
+        }
+
+        private void DrawFill(Rect rect, Color color)
+        {
+            GUI.color = color;
+            GUI.DrawTexture(rect, overlayTexture);
+            GUI.color = Color.white;
         }
 
         private void EnsureStyles()
@@ -169,28 +184,23 @@ namespace CargoStack
                 return;
             }
 
-            var white = new Color(0.96f, 0.96f, 0.96f);
-            var dim = new Color(0.70f, 0.72f, 0.74f);
-            var faint = new Color(0.55f, 0.57f, 0.60f);
+            var white = new Color(0.96f, 0.98f, 0.98f);
+            var dim = new Color(0.77f, 0.81f, 0.84f);
+            var faint = new Color(0.57f, 0.64f, 0.68f);
+            var yellow = new Color(0.95f, 0.71f, 0.2f);
 
             titleStyle = new GUIStyle
             {
                 font = titleFont,
                 fontSize = 60,
-                alignment = TextAnchor.MiddleLeft,
+                alignment = TextAnchor.UpperLeft,
                 normal = { textColor = white },
-            };
-            taglineStyle = new GUIStyle
-            {
-                font = bodyFont,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = dim },
             };
             sectionStyle = new GUIStyle
             {
                 font = bodyFont,
                 alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = faint },
+                normal = { textColor = yellow },
             };
             optionStyle = new GUIStyle
             {
@@ -207,8 +217,8 @@ namespace CargoStack
             noteStyle = new GUIStyle
             {
                 font = bodyFont,
-                alignment = TextAnchor.MiddleLeft,
-                normal = { textColor = faint },
+                alignment = TextAnchor.MiddleRight,
+                normal = { textColor = yellow },
             };
             descriptionStyle = new GUIStyle
             {
@@ -216,6 +226,12 @@ namespace CargoStack
                 alignment = TextAnchor.UpperLeft,
                 wordWrap = true,
                 normal = { textColor = faint },
+            };
+            loadingStyle = new GUIStyle
+            {
+                font = bodyFont,
+                alignment = TextAnchor.MiddleCenter,
+                normal = { textColor = white },
             };
         }
     }
