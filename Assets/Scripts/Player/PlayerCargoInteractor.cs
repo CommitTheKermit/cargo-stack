@@ -6,7 +6,8 @@ namespace CargoStack
 {
     /// <summary>
     /// 이 게임의 핵심 조작. 1인칭으로 화물을 직접 집어 짐칸에 쌓는다.
-    /// E 로 집고 놓으며, 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 를 누르는 동안 반시계 방향으로 돌린다.
+    /// E 로 집고 놓으며, F 를 눌렀다 놓으면 카메라 정면으로 던진다.
+    /// 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 를 누르는 동안 반시계 방향으로 돌린다.
     ///
     /// 원본: nan2026-cargo(NAN 2026 사전과제)의 Assets/Spike/Runtime/PlayerCargoInteractor.cs.
     /// 네임스페이스와 화물 타입(CargoItem → Cargo)만 바꿔 가져왔다.
@@ -24,6 +25,9 @@ namespace CargoStack
         [SerializeField] private float minimumPlacementNormalY = 0.55f;
         [SerializeField] private float placementSurfaceGap = 0.01f;
         [SerializeField, Min(0f)] private float previewRotationDegreesPerSecond = 90f;
+        [SerializeField, Min(0f)] private float minimumThrowSpeed = 4f;
+        [SerializeField, Min(0f)] private float maximumThrowSpeed = 12f;
+        [SerializeField, Min(0.01f)] private float maximumThrowChargeSeconds = 1f;
         [SerializeField] private Color placementPreviewColor = new Color(0.25f, 1f, 0.45f, 0.38f);
 
         private readonly Dictionary<Collider, bool> heldColliderStates = new Dictionary<Collider, bool>();
@@ -38,6 +42,7 @@ namespace CargoStack
         private CollisionDetectionMode originalCollisionMode;
         private bool hasValidPlacement;
         private float previewYaw;
+        private float throwChargeStartedAt = -1f;
         private Vector3 previewCargoPosition;
         private Quaternion previewCargoRotation;
 
@@ -192,6 +197,23 @@ namespace CargoStack
             ReleaseHeldCargo(heldBody.position, heldBody.rotation, playerController.Body.linearVelocity);
         }
 
+        public bool TryThrowHeldCargo(float chargeSeconds)
+        {
+            if (heldBody == null || viewCamera == null)
+            {
+                return false;
+            }
+
+            float charge = Mathf.Clamp01(chargeSeconds / maximumThrowChargeSeconds);
+            float throwSpeed = Mathf.Lerp(minimumThrowSpeed, maximumThrowSpeed, charge);
+            Vector3 inheritedVelocity = GetComponent<PlayerController>().Body.linearVelocity;
+            ReleaseHeldCargo(
+                heldBody.position,
+                heldBody.rotation,
+                inheritedVelocity + viewCamera.transform.forward * throwSpeed);
+            return true;
+        }
+
         private void Awake()
         {
             EnsureInitialized();
@@ -214,6 +236,18 @@ namespace CargoStack
             if (heldBody != null && Input.GetKey(KeyCode.Q))
             {
                 RotatePlacementPreview(Time.deltaTime);
+            }
+
+            if (heldBody != null && Input.GetKeyDown(KeyCode.F))
+            {
+                throwChargeStartedAt = Time.time;
+            }
+
+            if (throwChargeStartedAt >= 0f && Input.GetKeyUp(KeyCode.F))
+            {
+                float chargeSeconds = Time.time - throwChargeStartedAt;
+                throwChargeStartedAt = -1f;
+                TryThrowHeldCargo(chargeSeconds);
             }
         }
 
@@ -254,6 +288,7 @@ namespace CargoStack
             heldColliderCenter = Vector3.zero;
             heldColliderHalfSize = Vector3.zero;
             hasValidPlacement = false;
+            throwChargeStartedAt = -1f;
             DestroyPlacementPreview();
             RestoreHeldCargoCollisions();
             IgnorePlayerCollisions(body, false);
