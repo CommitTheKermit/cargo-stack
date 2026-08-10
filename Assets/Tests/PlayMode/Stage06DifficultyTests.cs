@@ -62,6 +62,7 @@ namespace CargoStack.Tests
             }
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             float remaining = 55f;
             float maxIceDrift = 0f;

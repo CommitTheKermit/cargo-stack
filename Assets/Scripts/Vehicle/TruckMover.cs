@@ -4,7 +4,8 @@ using UnityEngine;
 namespace CargoStack
 {
     /// <summary>
-    /// 경로를 자동 조향하는 트럭. 진행 방향은 경로가 정하지만 실제 이동 방향은 바퀴 아래
+    /// 플레이어가 전진·후진·조향으로 직접 운전하는 트럭. 앞바퀴 조향각과 휠베이스로
+    /// 차체의 회전 반경을 구하고, 실제 이동 방향은 바퀴 아래
     /// <see cref="PhysicsMaterial.dynamicFriction"/>으로 제한되는 횡접지력이 정한다.
     /// 얼음에서 코너를 돌면 기존 속도의 관성이 남아 코너 바깥으로 밀리고, 직선이나 고마찰
     /// 노면에서는 목표 진행 방향을 바로 따라간다.
@@ -23,8 +24,31 @@ namespace CargoStack
         [SerializeField] private float startDistance;
         [SerializeField] private float goalDistance = 60f;
 
-        [Header("속도 프로필")]
+        [Header("주행 조작")]
         [SerializeField] private float maxSpeed = 10f;
+
+        [Tooltip("엑셀을 끝까지 밟았을 때 초당 증가하는 속도.")]
+        [SerializeField, Min(0f)] private float acceleration = 4.5f;
+
+        [Tooltip("진행 반대 방향 키를 누를 때 정지할 때까지 적용되는 제동 감속도.")]
+        [SerializeField, Min(0f)] private float brakeDeceleration = 8f;
+
+        [Tooltip("후진 최고 속도.")]
+        [SerializeField, Min(0f)] private float maxReverseSpeed = 4f;
+
+        [Tooltip("후진 키를 끝까지 눌렀을 때 초당 증가하는 후진 속도.")]
+        [SerializeField, Min(0f)] private float reverseAcceleration = 3.5f;
+
+        [Tooltip("아무 페달도 밟지 않았을 때 구름 저항으로 초당 줄어드는 속도.")]
+        [SerializeField, Min(0f)] private float coastingDeceleration = 0.75f;
+
+        [Tooltip("앞바퀴가 좌우로 꺾이는 최대 각도.")]
+        [SerializeField, Range(1f, 60f)] private float maxSteeringAngle = 32f;
+
+        [Tooltip("앞바퀴가 목표 조향각까지 움직이는 초당 각도.")]
+        [SerializeField, Min(0f)] private float steeringResponseDegreesPerSecond = 100f;
+
+        [Header("테스트용 자동 주행")]
 
         [Tooltip("주행 진행도(0~1)에 대한 속도 배율. 급제동 구간은 이 커브의 골짜기로 만든다.")]
         [SerializeField] private AnimationCurve speedOverProgress = AnimationCurve.Linear(0f, 1f, 1f, 1f);
@@ -56,12 +80,19 @@ namespace CargoStack
         [SerializeField] private float rideHeight = 0.75f;
 
         private Rigidbody body;
+        private TruckWheelAnimator wheelAnimator;
         private float travelled;
         private bool isDriving;
         private Vector3 planarPosition;
         private Vector3 planarVelocity;
         private Vector3 steeringHeading = Vector3.right;
         private float rollVelocity;
+        private bool autopilotForTesting;
+        private bool hasTestControlInput;
+        private float testThrottle;
+        private float testReverse;
+        private float testSteering;
+        private float steeringAngleDegrees;
 
         public event Action Arrived;
 
@@ -84,13 +115,16 @@ namespace CargoStack
         /// <summary>현재 바퀴 아래 콜라이더의 동마찰 계수.</summary>
         public float SurfaceFriction { get; private set; }
 
-        public float Speed01 => maxSpeed > 0f ? Mathf.Clamp01(Speed / maxSpeed) : 0f;
+        public float Speed01 => maxSpeed > 0f ? Mathf.Clamp01(Mathf.Abs(Speed) / maxSpeed) : 0f;
+
+        public float SteeringAngleDegrees => steeringAngleDegrees;
 
         public float Progress => Mathf.InverseLerp(startDistance, goalDistance, travelled);
 
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
+            wheelAnimator = GetComponent<TruckWheelAnimator>();
             body.isKinematic = true;
             body.interpolation = RigidbodyInterpolation.Interpolate;
             travelled = startDistance;
@@ -103,11 +137,42 @@ namespace CargoStack
         public void BeginDrive()
         {
             isDriving = true;
-            Speed = EvaluateSpeed();
-            if (planarVelocity.sqrMagnitude < 1e-5f)
+            if (autopilotForTesting)
             {
-                planarVelocity = PathHeadingAt(travelled) * PlanarSpeedAt(travelled, Speed);
+                Speed = EvaluateAutopilotSpeed();
+                if (planarVelocity.sqrMagnitude < 1e-5f)
+                {
+                    planarVelocity = PathHeadingAt(travelled) * PlanarSpeedAt(travelled, Speed);
+                }
             }
+            else
+            {
+                Speed = 0f;
+                planarVelocity = Vector3.zero;
+            }
+        }
+
+        /// <summary>기존 난이도 회귀 테스트가 같은 속도 프로필로 경로를 완주하도록 한다.</summary>
+        public void EnableAutopilotForTesting()
+        {
+            autopilotForTesting = true;
+        }
+
+        /// <summary>키보드 대신 결정적인 입력으로 직접 주행을 검증한다.</summary>
+        public void SetControlInputForTesting(float forward, float reverse, float steering)
+        {
+            hasTestControlInput = true;
+            testThrottle = Mathf.Clamp01(forward);
+            testReverse = Mathf.Clamp01(reverse);
+            testSteering = Mathf.Clamp(steering, -1f, 1f);
+        }
+
+        public void ClearControlInputForTesting()
+        {
+            hasTestControlInput = false;
+            testThrottle = 0f;
+            testReverse = 0f;
+            testSteering = 0f;
         }
 
         /// <summary>씬 빌더가 출발 자세를 잡을 때 쓴다. 에디터에서도 경로 위에 정확히 올려 둔다.</summary>
@@ -132,7 +197,6 @@ namespace CargoStack
             }
 
             float deltaTime = Time.fixedDeltaTime;
-            Speed = EvaluateSpeed();
 
             Vector3 routePosition = path.PositionAt(travelled);
             Vector3 pathHeading = PathHeadingAt(travelled);
@@ -142,10 +206,35 @@ namespace CargoStack
                 0f,
                 planarPosition.z - routePosition.z);
             float lateralOffset = Vector3.Dot(routeToTruck, pathRight);
-            Vector3 steeringTarget = pathHeading * steeringLookAhead - pathRight * lateralOffset;
-            steeringHeading = steeringTarget.sqrMagnitude > 1e-5f
-                ? steeringTarget.normalized
-                : pathHeading;
+            if (autopilotForTesting)
+            {
+                Speed = EvaluateAutopilotSpeed();
+                Vector3 steeringTarget = pathHeading * steeringLookAhead - pathRight * lateralOffset;
+                steeringHeading = steeringTarget.sqrMagnitude > 1e-5f
+                    ? steeringTarget.normalized
+                    : pathHeading;
+            }
+            else
+            {
+                ReadDriveInput(out float forward, out float reverse, out float steering);
+                UpdateManualSpeed(forward, reverse, deltaTime);
+                steeringAngleDegrees = Mathf.MoveTowards(
+                    steeringAngleDegrees,
+                    steering * maxSteeringAngle,
+                    steeringResponseDegreesPerSecond * deltaTime);
+                float wheelbase = Mathf.Max(0.1f, frontAxleOffset - rearAxleOffset);
+                float signedPlanarSpeed = PlanarSpeedAt(travelled, Speed);
+                float yaw = signedPlanarSpeed
+                    / wheelbase
+                    * Mathf.Tan(steeringAngleDegrees * Mathf.Deg2Rad)
+                    * Mathf.Rad2Deg
+                    * deltaTime;
+                steeringHeading = Quaternion.AngleAxis(yaw, Vector3.up) * steeringHeading;
+                steeringHeading.y = 0f;
+                steeringHeading.Normalize();
+            }
+
+            wheelAnimator?.SetFrontSteeringAngle(steeringAngleDegrees);
 
             SurfaceFriction = SampleSurfaceFriction(routePosition);
             float planarSpeed = PlanarSpeedAt(travelled, Speed);
@@ -155,10 +244,18 @@ namespace CargoStack
                 planarSpeed);
             planarPosition += planarVelocity * deltaTime;
 
-            float directionAlignment = planarVelocity.sqrMagnitude > 1e-5f
-                ? Mathf.Max(0f, Vector3.Dot(planarVelocity.normalized, pathHeading))
-                : 0f;
-            travelled += Speed * directionAlignment * deltaTime;
+            if (autopilotForTesting)
+            {
+                float directionAlignment = planarVelocity.sqrMagnitude > 1e-5f
+                    ? Mathf.Max(0f, Vector3.Dot(planarVelocity.normalized, pathHeading))
+                    : 0f;
+                travelled += Speed * directionAlignment * deltaTime;
+            }
+            else
+            {
+                travelled += Vector3.Dot(planarVelocity, pathHeading) * deltaTime;
+                travelled = Mathf.Max(0f, travelled);
+            }
 
             bool reachedGoal = travelled >= goalDistance;
             if (reachedGoal)
@@ -186,10 +283,52 @@ namespace CargoStack
             }
         }
 
-        private float EvaluateSpeed()
+        private float EvaluateAutopilotSpeed()
         {
             float factor = Mathf.Max(minSpeedFactor, speedOverProgress.Evaluate(Progress));
             return maxSpeed * factor;
+        }
+
+        private void ReadDriveInput(out float forward, out float reverse, out float steering)
+        {
+            if (hasTestControlInput)
+            {
+                forward = testThrottle;
+                reverse = testReverse;
+                steering = testSteering;
+                return;
+            }
+
+            float vertical = Input.GetAxisRaw("Vertical");
+            forward = Mathf.Max(0f, vertical);
+            reverse = Mathf.Max(0f, -vertical);
+            steering = Input.GetAxisRaw("Horizontal");
+        }
+
+        private void UpdateManualSpeed(float forward, float reverse, float deltaTime)
+        {
+            if (forward > 0f)
+            {
+                Speed = Speed < 0f
+                    ? Mathf.MoveTowards(Speed, 0f, brakeDeceleration * forward * deltaTime)
+                    : Mathf.MoveTowards(Speed, maxSpeed, acceleration * forward * deltaTime);
+            }
+            else if (reverse > 0f)
+            {
+                Speed = Speed > 0f
+                    ? Mathf.MoveTowards(Speed, 0f, brakeDeceleration * reverse * deltaTime)
+                    : Mathf.MoveTowards(
+                        Speed,
+                        -maxReverseSpeed,
+                        reverseAcceleration * reverse * deltaTime);
+            }
+            else
+            {
+                Speed = Mathf.MoveTowards(
+                    Speed,
+                    0f,
+                    coastingDeceleration * deltaTime);
+            }
         }
 
         /// <summary>
@@ -219,7 +358,7 @@ namespace CargoStack
                 maxLateralSpeedChange);
             planarVelocity += right * lateralSpeedChange;
             planarVelocity = planarVelocity.sqrMagnitude > 1e-5f
-                ? planarVelocity.normalized * desiredPlanarSpeed
+                ? planarVelocity.normalized * Mathf.Abs(desiredPlanarSpeed)
                 : desiredHeading * desiredPlanarSpeed;
             return deltaTime > 0f ? lateralSpeedChange / deltaTime : 0f;
         }

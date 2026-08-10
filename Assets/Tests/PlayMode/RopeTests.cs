@@ -274,6 +274,7 @@ namespace CargoStack.Tests
             Assert.IsNotEmpty(segments, "로프에 사슬 마디가 없다");
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
 
             float fastestSegment = 0f;
@@ -319,6 +320,7 @@ namespace CargoStack.Tests
                 "출발 전인데 로프를 걸었다는 이유로 짐이 이미 짐칸을 벗어났다");
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return WaitForResult();
 
