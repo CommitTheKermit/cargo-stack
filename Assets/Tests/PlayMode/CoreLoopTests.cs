@@ -8,7 +8,7 @@ using UnityEngine.TestTools;
 namespace CargoStack.Tests
 {
     /// <summary>
-    /// MVP 검증 대상 두 축(1인칭 짐 쌓기·자동 주행)이 실제로 성립하는지 확인한다.
+    /// MVP 검증 대상 두 축(1인칭 짐 쌓기·직접 주행)이 실제로 성립하는지 확인한다.
     /// 특히 "마찰만으로 짐이 실려 간다"는 전제가 깨지면 게임 자체가 성립하지 않으므로
     /// 그 전제를 회귀 테스트로 고정해 둔다.
     /// </summary>
@@ -431,6 +431,7 @@ namespace CargoStack.Tests
             tailgate.SetOpenInstantly(true);
             Assert.IsTrue(tailgate.IsOpen, "출발 전 테일게이트 열림 준비에 실패했다");
 
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
 
             Assert.AreEqual(GameState.Loading, flow.State,
@@ -1015,6 +1016,7 @@ namespace CargoStack.Tests
             Assert.IsTrue(firstPersonListener.enabled, "적재 중인데 1인칭 AudioListener가 꺼져 있다");
             Assert.IsFalse(dioramaListener.enabled, "적재 중인데 디오라마 AudioListener가 켜져 있다");
 
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return null;
 
@@ -1029,6 +1031,7 @@ namespace CargoStack.Tests
         public IEnumerator 출발하면_도착_지점까지_주행하고_결과_상태가_된다()
         {
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
 
             Assert.AreEqual(GameState.Driving, flow.State, "출발 신호를 줘도 주행 상태로 넘어가지 않았다");
@@ -1051,6 +1054,7 @@ namespace CargoStack.Tests
             float highest = lowest;
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
 
             float remaining = DriveTimeoutSeconds;
@@ -1137,6 +1141,7 @@ namespace CargoStack.Tests
                 "출발 전인데 짐이 이미 짐칸을 벗어났다");
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return WaitForResult();
 
@@ -1154,6 +1159,7 @@ namespace CargoStack.Tests
             yield return Settle(180);
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return WaitForResult();
 
@@ -1169,6 +1175,7 @@ namespace CargoStack.Tests
             tracker.CargoDropped += _ => dropped++;
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return WaitForResult();
 
@@ -1221,6 +1228,7 @@ namespace CargoStack.Tests
             Assert.IsFalse(visual.enabled, "부서진 흉상의 모델이 여전히 보인다");
 
             Time.timeScale = 3f;
+            truck.EnableAutopilotForTesting();
             flow.StartDriving();
             yield return WaitForResult();
 

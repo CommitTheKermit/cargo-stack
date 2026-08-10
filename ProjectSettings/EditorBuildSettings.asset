@@ -29,4 +29,7 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/Stage06_FrozenCargo.unity
     guid: 41aa47423c4e3462b816a39787cd84df
+  - enabled: 1
+    path: Assets/Scenes/Stage07_HardBumps.unity
+    guid: c8fefba9c451a4a21abfe355e1ddc03b
   m_configObjects: {}

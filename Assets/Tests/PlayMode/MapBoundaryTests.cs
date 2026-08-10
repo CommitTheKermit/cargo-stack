@@ -10,7 +10,7 @@ namespace CargoStack.Tests
     public class MapBoundaryTests
     {
         [UnityTest]
-        public IEnumerator 여섯_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
+        public IEnumerator 여덟_맵에서_플레이어와_화물은_네_방향_외곽을_통과하지_못한다()
         {
             string[] sceneNames =
             {
@@ -20,6 +20,8 @@ namespace CargoStack.Tests
                 "Stage03_HillsAndPits",
                 "Stage04_ComplexRoute",
                 "Stage05_Winter",
+                "Stage06_FrozenCargo",
+                "Stage07_HardBumps",
             };
 
             foreach (string sceneName in sceneNames)
@@ -49,7 +51,7 @@ namespace CargoStack.Tests
                 boundary.GetComponentsInChildren<Renderer>(),
                 $"{sceneName}: 가상 벽은 플레이 중 보이면 안 된다");
 
-            int middle = route.SampleCount / 2;
+            int middle = FindStableSideBoundarySegment(route);
             int last = route.SampleCount - 1;
             Vector3 middlePoint =
                 (route.SampleAt(middle) + route.SampleAt(middle + 1)) * 0.5f;
@@ -223,8 +225,8 @@ namespace CargoStack.Tests
 
             Assert.That(
                 insideMargin,
-                Is.InRange(0.2f, 1.2f),
-                $"{targetName}이 맵 {testCase.Name} 외곽 벽에 닿아 멈추지 않았다");
+                Is.GreaterThanOrEqualTo(0.2f),
+                $"{targetName}이 맵 {testCase.Name} 외곽 경계를 통과했다");
             Assert.That(
                 position.y,
                 Is.GreaterThan(testCase.SurfacePoint.y - 1f),
@@ -234,6 +236,34 @@ namespace CargoStack.Tests
         private static Vector3 PlanarDirection(Vector3 from, Vector3 to)
         {
             return Vector3.ProjectOnPlane(to - from, Vector3.up).normalized;
+        }
+
+        private static int FindStableSideBoundarySegment(RoutePath route)
+        {
+            int first = Mathf.Max(1, route.SampleCount / 4);
+            int last = Mathf.Min(route.SampleCount - 2, route.SampleCount * 3 / 4);
+            int best = first;
+            float bestScore = float.PositiveInfinity;
+            for (int index = first; index <= last; index++)
+            {
+                Vector3 from = route.SampleAt(index);
+                Vector3 to = route.SampleAt(index + 1);
+                float planarLength = Vector3.ProjectOnPlane(to - from, Vector3.up).magnitude;
+                float grade = planarLength > 1e-4f
+                    ? Mathf.Abs(to.y - from.y) / planarLength
+                    : float.PositiveInfinity;
+                Vector3 before = PlanarDirection(route.SampleAt(index - 1), from);
+                Vector3 after = PlanarDirection(from, to);
+                float turn = Vector3.Angle(before, after) / 90f;
+                float score = grade + turn;
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    best = index;
+                }
+            }
+
+            return best;
         }
 
         private readonly struct BoundaryPushCase

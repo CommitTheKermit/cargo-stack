@@ -392,6 +392,7 @@ namespace CargoStack.EditorTools
             {
                 wiring.Ref("flow", flow)
                     .Ref("tracker", tracker)
+                    .Ref("truck", mover)
                     .Ref("bedMaterial", bedPhysics)
                     .Ref("cargoMaterial", cargoPhysics)
                     .Ref("ropeInteractor", player.GetComponent<PlayerRopeInteractor>());

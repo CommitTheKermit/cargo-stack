@@ -577,6 +577,76 @@ namespace CargoStack.Tests
                 + $"얼음 큐브 {iceCubes}개");
         }
 
+        [UnityTest]
+        public IEnumerator 일곱번째_스테이지는_대형_방지턱_다섯개가_이어지는_고난도_맵이다()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "Stage07_HardBumps",
+                LoadSceneMode.Single);
+
+            StageContext context = Object.FindAnyObjectByType<StageContext>();
+            RoutePath route = Object.FindAnyObjectByType<RoutePath>();
+            Cargo[] cargo = Object.FindObjectsByType<Cargo>();
+
+            Assert.NotNull(context, "Stage07 StageContext가 없다");
+            Assert.AreEqual("stage-07", context.Definition.StageId);
+            Assert.AreEqual(StageTheme.Default, context.Definition.Theme);
+            Assert.AreEqual(8, cargo.Length, "Stage07 화물 수가 기획과 다르다");
+            Assert.AreEqual(3, context.Definition.RopeCount, "Stage07 로프 수가 기획과 다르다");
+            Assert.AreEqual(6.5f, context.Definition.MaxSpeed, 0.01f);
+            Assert.NotNull(route, "Stage07 경로가 없다");
+            Assert.That(route.TotalLength, Is.GreaterThan(160f));
+
+            int raisedRegions = 0;
+            bool wasRaised = false;
+            float highest = float.NegativeInfinity;
+            float steepestAngle = 0f;
+            Vector3 previous = route.SampleAt(0);
+            for (int index = 0; index < route.SampleCount; index++)
+            {
+                Vector3 point = route.SampleAt(index);
+                bool isRaised = point.y > 0.35f;
+                if (isRaised && !wasRaised)
+                {
+                    raisedRegions++;
+                }
+
+                if (index > 0)
+                {
+                    float horizontal = Vector2.Distance(
+                        new Vector2(previous.x, previous.z),
+                        new Vector2(point.x, point.z));
+                    steepestAngle = Mathf.Max(
+                        steepestAngle,
+                        Mathf.Atan2(Mathf.Abs(point.y - previous.y), horizontal)
+                            * Mathf.Rad2Deg);
+                }
+
+                highest = Mathf.Max(highest, point.y);
+                previous = point;
+                wasRaised = isRaised;
+            }
+
+            Assert.AreEqual(5, raisedRegions, "독립된 대형 방지턱이 다섯 구간이어야 한다");
+            Assert.That(highest, Is.GreaterThan(1.25f), "마지막 방지턱 높이가 충분하지 않다");
+            Assert.That(steepestAngle, Is.GreaterThan(18f), "방지턱 경사가 빡세지 않다");
+
+            int capsules = 0;
+            int fragile = 0;
+            foreach (Cargo item in cargo)
+            {
+                capsules += item.GetComponent<CapsuleCollider>() != null ? 1 : 0;
+                fragile += item.GetComponent<CargoBreakable>() != null ? 1 : 0;
+            }
+
+            Assert.AreEqual(2, capsules, "방지턱에서 구르는 원통 화물은 두 개여야 한다");
+            Assert.AreEqual(2, fragile, "충격 관리가 필요한 파손 화물은 두 개여야 한다");
+            Debug.Log(
+                $"[CargoStack] Stage07 대형 방지턱: 경로 {route.TotalLength:0.0}m, "
+                + $"방지턱 {raisedRegions}개, 최고 {highest:0.0}m, "
+                + $"최대 경사 {steepestAngle:0.0}°, 화물 {cargo.Length}개");
+        }
+
         private static void AssertWinterEnvironmentStaysOutsideRoad(
             RoutePath route,
             GameObject environment)
