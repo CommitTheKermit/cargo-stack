@@ -16,7 +16,7 @@ MonoBehaviour:
   sceneName: Stage03_HillsAndPits
   showInMenu: 1
   displayName: Stage 03 · 오르락내리락
-  menuDescription: 대형 박스 3개·일반 상자 2개·드럼통 2개 · 구덩이와 언덕
+  menuDescription: 대형 박스 2개·일반 상자 2개·드럼통 2개 · 구덩이와 언덕
   routeControlPoints:
   - {x: 0, y: 0, z: 0}
   - {x: 16, y: 0, z: 0}
@@ -79,11 +79,6 @@ MonoBehaviour:
     m_PostInfinity: 2
     m_RotationOrder: 4
   cargo:
-  - assetName: CardboardBox
-    maximumSize: {x: 1.05, y: 2, z: 0.95}
-    mass: 55
-    colliderShape: 0
-    stretchToMaximumSize: 1
   - assetName: CardboardBox
     maximumSize: {x: 1.05, y: 2, z: 0.95}
     mass: 55
