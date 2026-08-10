@@ -6,6 +6,7 @@
 |---|---|---|---|
 | `Prototype/bgm_playful_loop.ogg` | [Wacky Wobblings](https://opengameart.org/content/wacky-wobblings) | Fupi | 파일명 변경 |
 | `Prototype/engine_idle_loop.wav` | [racing car engine sound loops](https://opengameart.org/content/racing-car-engine-sound-loops)의 `loop_0.wav` | domasx2 | 44.1kHz 모노 PCM 변환 |
+| `Resources/Audio/truck_horn.wav` | [Car horn #4](https://bigsoundbank.com/car-horn-4-s0260.html) | DenisChardonnet | 파일명 변경 |
 | `Prototype/cargo_thump_01.wav` | [100 CC0 metal and wood SFX](https://opengameart.org/content/100-cc0-metal-and-wood-sfx)의 `wood_hit_03.ogg` | rubberduck | -3dB, 44.1kHz 모노 PCM 변환 |
 | `Prototype/cargo_thump_02.wav` | 같은 팩의 `wood_hit_04.ogg` | rubberduck | -3dB, 44.1kHz 모노 PCM 변환 |
 | `Prototype/cargo_thump_03.wav` | 같은 팩의 `wood_hit_08.ogg` | rubberduck | -3dB, 44.1kHz 모노 PCM 변환 |
