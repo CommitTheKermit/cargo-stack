@@ -61,6 +61,40 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
+        public IEnumerator 일반_스테이지는_슬라이더_없이_이미지_키_안내만_보여준다()
+        {
+            yield return SceneManager.LoadSceneAsync(
+                "Stage02_SpeedBumps",
+                LoadSceneMode.Single);
+            yield return null;
+
+            PrototypeHud hud = Object.FindAnyObjectByType<PrototypeHud>();
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            Assert.NotNull(hud);
+            Assert.NotNull(flow);
+            Assert.NotNull(GameObject.Find("Stage Key Guide UI"));
+            Assert.IsTrue(hud.IsLoadingGuideVisible, "적재 키 안내가 보이지 않는다");
+            Assert.IsFalse(hud.IsDrivingGuideVisible, "출발 전에 주행 키 안내가 보인다");
+            Assert.AreEqual(
+                0,
+                Object.FindObjectsByType<Slider>(FindObjectsSortMode.None).Length,
+                "일반 스테이지에 마찰 슬라이더가 남아 있다");
+
+            flow.StartDriving();
+            float timeout = 1f;
+            while (flow.State == GameState.Loading && timeout > 0f)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
+            yield return null;
+
+            Assert.AreEqual(GameState.Driving, flow.State);
+            Assert.IsFalse(hud.IsLoadingGuideVisible, "출발 뒤에도 적재 키 안내가 보인다");
+            Assert.IsTrue(hud.IsDrivingGuideVisible, "출발 뒤 주행 키 안내로 전환되지 않는다");
+        }
+
+        [UnityTest]
         public IEnumerator 메인_메뉴에서_첫_스테이지를_선택하면_해당_씬을_연다()
         {
             yield return SceneManager.LoadSceneAsync(

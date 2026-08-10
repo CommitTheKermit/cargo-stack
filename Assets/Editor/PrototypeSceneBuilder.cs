@@ -425,12 +425,7 @@ namespace CargoStack.EditorTools
 
             using (var wiring = new Wiring(hud))
             {
-                wiring.Ref("flow", flow)
-                    .Ref("tracker", tracker)
-                    .Ref("truck", mover)
-                    .Ref("bedMaterial", bedPhysics)
-                    .Ref("cargoMaterial", cargoPhysics)
-                    .Ref("ropeInteractor", player.GetComponent<PlayerRopeInteractor>());
+                wiring.Ref("flow", flow);
             }
 
             if (definition.StageId == "stage-01")
@@ -443,6 +438,10 @@ namespace CargoStack.EditorTools
                     player.GetComponent<PlayerCargoInteractor>(),
                     player.GetComponent<PlayerRopeInteractor>(),
                     tailgate);
+            }
+            else
+            {
+                BuildStageKeyGuide(hud);
             }
 
             resultScreen.Configure(flow, tracker);
@@ -1884,6 +1883,108 @@ namespace CargoStack.EditorTools
                 loadingProgress,
                 drivingChecks,
                 drivingProgress);
+        }
+
+        private static void BuildStageKeyGuide(PrototypeHud hud)
+        {
+            Canvas canvas = CreateOverlayCanvas("Stage Key Guide UI", true);
+            Font font = AssetDatabase.LoadAssetAtPath<Font>(BodyFontPath);
+            Sprite rowSprite = LoadUiSprite(MainMenuStageButtonPath, 2048);
+
+            Image loadingGuide = CreateKeyGuidePanel(
+                "Loading Key Guide",
+                canvas.transform,
+                font,
+                rowSprite,
+                "적재 조작",
+                new[]
+                {
+                    "WASD  이동  ·  SPACE  점프",
+                    "마우스  시점  ·  TAB  커서 풀기",
+                    "E  집기·놓기·뒷문 / 길게 던지기  ·  Q  회전",
+                    "R  로프 걸기  ·  X  로프 걷기",
+                    "ENTER  출발  ·  BACKSPACE  재시작",
+                    "ESC  스테이지 선택",
+                });
+            Image drivingGuide = CreateKeyGuidePanel(
+                "Driving Key Guide",
+                canvas.transform,
+                font,
+                rowSprite,
+                "주행 조작",
+                new[]
+                {
+                    "W / S  전진·후진  ·  A / D  조향",
+                    "마우스 드래그  시점 회전  ·  휠  확대·축소",
+                    "BACKSPACE  재시작  ·  ESC  스테이지 선택",
+                });
+            drivingGuide.gameObject.SetActive(false);
+            hud.ConfigureUi(loadingGuide.gameObject, drivingGuide.gameObject);
+        }
+
+        private static Image CreateKeyGuidePanel(
+            string name,
+            Transform parent,
+            Font font,
+            Sprite rowSprite,
+            string title,
+            IReadOnlyList<string> rows)
+        {
+            const float headerHeight = 52f;
+            const float rowHeight = 45f;
+            const float padding = 10f;
+
+            Image panel = CreateUiImage(name, parent, null);
+            panel.preserveAspect = false;
+            panel.color = new Color(0.025f, 0.075f, 0.12f, 0.94f);
+            RectTransform panelRect = panel.rectTransform;
+            panelRect.anchorMin = new Vector2(0f, 1f);
+            panelRect.anchorMax = panelRect.anchorMin;
+            panelRect.pivot = new Vector2(0f, 1f);
+            panelRect.anchoredPosition = new Vector2(18f, -18f);
+            panelRect.sizeDelta = new Vector2(
+                510f,
+                headerHeight + rows.Count * rowHeight + padding * 2f);
+
+            Image accent = CreateUiImage("Safety Stripe", panel.transform, null);
+            accent.preserveAspect = false;
+            accent.color = new Color(0.98f, 0.69f, 0.10f);
+            RectTransform accentRect = accent.rectTransform;
+            accentRect.anchorMin = new Vector2(0f, 1f);
+            accentRect.anchorMax = new Vector2(1f, 1f);
+            accentRect.pivot = new Vector2(0.5f, 1f);
+            accentRect.anchoredPosition = Vector2.zero;
+            accentRect.sizeDelta = new Vector2(0f, 6f);
+
+            Text header = CreateUiText(
+                "Title", panel.transform, font, title, 20,
+                new Color(0.98f, 0.74f, 0.20f), TextAnchor.MiddleLeft,
+                new Vector2(0f, 1f), new Vector2(1f, 1f));
+            header.fontStyle = FontStyle.Bold;
+            RectTransform headerRect = header.rectTransform;
+            headerRect.pivot = new Vector2(0.5f, 1f);
+            headerRect.anchoredPosition = new Vector2(0f, -6f);
+            headerRect.sizeDelta = new Vector2(-40f, headerHeight - 6f);
+
+            for (int index = 0; index < rows.Count; index++)
+            {
+                Image row = CreateUiImage($"Key Row {index + 1}", panel.transform, rowSprite);
+                row.preserveAspect = false;
+                RectTransform rowRect = row.rectTransform;
+                rowRect.anchorMin = new Vector2(0f, 1f);
+                rowRect.anchorMax = new Vector2(1f, 1f);
+                rowRect.pivot = new Vector2(0.5f, 1f);
+                rowRect.anchoredPosition = new Vector2(0f, -headerHeight - index * rowHeight);
+                rowRect.sizeDelta = new Vector2(-padding * 2f, rowHeight - 3f);
+
+                Text label = CreateUiText(
+                    "Label", row.transform, font, rows[index], 16,
+                    new Color(0.03f, 0.10f, 0.17f), TextAnchor.MiddleLeft,
+                    new Vector2(0.06f, 0f), new Vector2(0.96f, 1f));
+                label.fontStyle = FontStyle.Bold;
+            }
+
+            return panel;
         }
 
         private static Canvas CreateOverlayCanvas(string name, bool scaleWithScreen)
