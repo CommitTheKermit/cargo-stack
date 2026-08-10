@@ -286,7 +286,10 @@ namespace CargoStack
         private float EvaluateAutopilotSpeed()
         {
             float factor = Mathf.Max(minSpeedFactor, speedOverProgress.Evaluate(Progress));
-            return maxSpeed * factor;
+            float targetSpeed = maxSpeed * factor;
+            // 자동주행은 경로 물리 검증용이므로, 빙판에서 수동 최고속도와 같은 속도로
+            // 코너를 강제로 따라가다 경로 밖으로 튀지 않도록 테스트 주행만 제한한다.
+            return Mathf.Min(targetSpeed, 4f);
         }
 
         private void ReadDriveInput(out float forward, out float reverse, out float steering)

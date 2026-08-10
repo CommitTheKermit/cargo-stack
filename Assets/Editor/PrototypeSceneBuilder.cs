@@ -276,7 +276,11 @@ namespace CargoStack.EditorTools
                 0.02f,
                 PhysicsMaterialCombine.Minimum);
             PhysicsMaterial roadPhysics = isWinter
-                ? EnsurePhysicsMaterial("IceRoadSurface", 0.02f, 0.02f)
+                ? EnsurePhysicsMaterial(
+                    "IceRoadSurface",
+                    0.005f,
+                    0.006f,
+                    PhysicsMaterialCombine.Minimum)
                 : null;
 
             ApplyPhysicsProjectSettings();

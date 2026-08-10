@@ -123,5 +123,32 @@ namespace CargoStack.Tests
                 + $"S 후진 {truck.Speed:0.00}m/s");
             truck.ClearControlInputForTesting();
         }
+
+        [UnityTest]
+        public IEnumerator 최고속도_60kmh가_실제_적용된다()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            StageContext context = Object.FindAnyObjectByType<StageContext>();
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            Assert.NotNull(context);
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            flow.StartDriving();
+            for (int step = 0; step < 200; step++)
+            {
+                yield return new WaitForFixedUpdate();
+            }
+
+            Assert.That(context.Definition.MaxSpeed, Is.EqualTo(16.6667f).Within(0.01f));
+            Assert.That(truck.Speed, Is.EqualTo(16.6667f).Within(0.15f),
+                "전진 입력을 충분히 유지해도 60km/h 최고속도에 도달하지 못했다");
+            Assert.That(truck.Speed01, Is.GreaterThan(0.99f));
+            Debug.Log($"[CargoStack] 최고속도 검증: {truck.Speed:0.00}m/s ({truck.Speed * 3.6f:0.0}km/h)");
+            truck.ClearControlInputForTesting();
+        }
     }
 }

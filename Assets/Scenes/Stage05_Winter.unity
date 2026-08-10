@@ -20927,7 +20927,7 @@ MonoBehaviour:
   path: {fileID: 1245071232}
   startDistance: 8
   goalDistance: 197.0285
-  maxSpeed: 6.5
+  maxSpeed: 16.6667
   acceleration: 4.5
   brakeDeceleration: 8
   maxReverseSpeed: 4

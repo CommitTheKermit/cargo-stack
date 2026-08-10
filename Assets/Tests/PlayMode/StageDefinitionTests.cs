@@ -315,7 +315,7 @@ namespace CargoStack.Tests
             Assert.That(route.TotalLength, Is.GreaterThan(190f));
             Assert.AreEqual(7, cargo.Length, "설원 스테이지는 화물 일곱 개를 운송해야 한다");
             Assert.AreEqual(2, context.Definition.RopeCount, "로프는 두 개만 제공해야 한다");
-            Assert.AreEqual(6.5f, context.Definition.MaxSpeed, 0.01f);
+            Assert.AreEqual(16.6667f, context.Definition.MaxSpeed, 0.01f);
 
             int boxes = 0;
             int capsules = 0;
@@ -389,6 +389,10 @@ namespace CargoStack.Tests
             Assert.NotNull(roadCollider.sharedMaterial, "얼음 도로 저마찰 재질이 연결되지 않았다");
             Assert.That(roadCollider.sharedMaterial.dynamicFriction, Is.LessThan(0.1f));
             Assert.That(roadCollider.sharedMaterial.staticFriction, Is.LessThan(0.1f));
+            Assert.AreEqual(
+                PhysicsMaterialCombine.Minimum,
+                roadCollider.sharedMaterial.frictionCombine,
+                "빙판 도로는 다른 재질과 접촉해도 최소 마찰을 사용해야 한다");
             TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
             Assert.NotNull(truck, "빙판 접지력을 계산할 TruckMover가 없다");
             Assert.AreEqual(
@@ -523,7 +527,7 @@ namespace CargoStack.Tests
             Assert.AreEqual(StageTheme.Winter, context.Definition.Theme);
             Assert.AreEqual(7, cargo.Length, "Stage06 화물 수가 기획과 다르다");
             Assert.AreEqual(2, context.Definition.RopeCount, "Stage06 로프 수가 기획과 다르다");
-            Assert.AreEqual(6.8f, context.Definition.MaxSpeed, 0.01f);
+            Assert.AreEqual(16.6667f, context.Definition.MaxSpeed, 0.01f);
             Assert.NotNull(route, "Stage06 경로가 없다");
             Assert.That(route.TotalLength, Is.GreaterThan(215f));
             Assert.NotNull(roadCollider, "Stage06 얼음 도로 콜라이더가 없다");
@@ -593,7 +597,7 @@ namespace CargoStack.Tests
             Assert.AreEqual(StageTheme.Default, context.Definition.Theme);
             Assert.AreEqual(8, cargo.Length, "Stage07 화물 수가 기획과 다르다");
             Assert.AreEqual(3, context.Definition.RopeCount, "Stage07 로프 수가 기획과 다르다");
-            Assert.AreEqual(6.5f, context.Definition.MaxSpeed, 0.01f);
+            Assert.AreEqual(16.6667f, context.Definition.MaxSpeed, 0.01f);
             Assert.NotNull(route, "Stage07 경로가 없다");
             Assert.That(route.TotalLength, Is.GreaterThan(160f));
 

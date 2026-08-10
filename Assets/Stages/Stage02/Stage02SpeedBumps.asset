@@ -31,7 +31,7 @@ MonoBehaviour:
   - {x: 104, y: 0, z: 0}
   truckStartDistance: 8
   goalOffsetFromEnd: 6
-  maxSpeed: 9
+  maxSpeed: 16.6667
   speedOverProgress:
     serializedVersion: 2
     m_Curve:
