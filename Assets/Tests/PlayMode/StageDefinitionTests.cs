@@ -61,6 +61,8 @@ namespace CargoStack.Tests
                                 $"{sceneName}: {obstacle.name}의 콜라이더가 Trigger다");
                             Assert.NotNull(collider.sharedMesh,
                                 $"{sceneName}: {obstacle.name}의 콜라이더 메시가 비어 있다");
+                            Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), collider.gameObject.layer,
+                                $"{sceneName}: {obstacle.name}의 콜라이더가 Obstacle 레이어가 아니다");
                         }
 
                         obstacleCount++;
@@ -79,6 +81,11 @@ namespace CargoStack.Tests
                             MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
                             Assert.That(colliders.Length, Is.GreaterThan(0),
                                 $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                            foreach (MeshCollider collider in colliders)
+                            {
+                                Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), collider.gameObject.layer,
+                                    $"{sceneName}: {obstacle.name}의 콜라이더가 Obstacle 레이어가 아니다");
+                            }
                             obstacleCount++;
                             colliderCount += colliders.Length;
                         }
@@ -96,6 +103,11 @@ namespace CargoStack.Tests
                         MeshCollider[] colliders = obstacle.GetComponentsInChildren<MeshCollider>(true);
                         Assert.That(colliders.Length, Is.GreaterThan(0),
                             $"{sceneName}: {obstacle.name}에 MeshCollider가 없다");
+                        foreach (MeshCollider collider in colliders)
+                        {
+                            Assert.AreEqual(LayerMask.NameToLayer("Obstacle"), collider.gameObject.layer,
+                                $"{sceneName}: {obstacle.name}의 콜라이더가 Obstacle 레이어가 아니다");
+                        }
                         obstacleCount++;
                         colliderCount += colliders.Length;
                     }

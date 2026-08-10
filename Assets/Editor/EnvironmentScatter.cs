@@ -607,14 +607,24 @@ namespace CargoStack.EditorTools
 
         private static void AddMeshColliders(GameObject instance)
         {
+            int obstacleLayer = LayerMask.NameToLayer("Obstacle");
+            if (obstacleLayer < 0)
+            {
+                throw new InvalidOperationException("Obstacle 레이어가 없다.");
+            }
+
             foreach (MeshFilter meshFilter in instance.GetComponentsInChildren<MeshFilter>(true))
             {
-                if (meshFilter.sharedMesh == null || meshFilter.GetComponent<Collider>() != null)
+                if (meshFilter.sharedMesh == null)
                 {
                     continue;
                 }
 
-                meshFilter.gameObject.AddComponent<MeshCollider>().sharedMesh = meshFilter.sharedMesh;
+                meshFilter.gameObject.layer = obstacleLayer;
+                if (meshFilter.GetComponent<Collider>() == null)
+                {
+                    meshFilter.gameObject.AddComponent<MeshCollider>().sharedMesh = meshFilter.sharedMesh;
+                }
             }
         }
 

@@ -9,6 +9,47 @@ namespace CargoStack.Tests
     public class TruckControlTests
     {
         [UnityTest]
+        public IEnumerator 월드_바위에_직진하면_트럭이_멈춘다()
+        {
+            yield return SceneManager.LoadSceneAsync("Stage01_Tutorial", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            Transform rocks = GameObject.Find("Environment")?.transform.Find("Rocks");
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            Assert.NotNull(rocks);
+            Assert.That(rocks.childCount, Is.GreaterThan(0));
+
+            Transform rock = rocks.GetChild(0);
+            Collider rockCollider = rock.GetComponentInChildren<Collider>();
+            Assert.NotNull(rockCollider);
+            Vector3 targetCenter = truck.transform.position + truck.transform.right * 8f;
+            rock.position += targetCenter - rockCollider.bounds.center;
+            Physics.SyncTransforms();
+
+            truck.SetControlInputForTesting(1f, 0f, 0f);
+            flow.StartDriving();
+            float timeout = 6f;
+            bool accelerated = false;
+            while (timeout > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                timeout -= Time.fixedDeltaTime;
+                accelerated |= truck.Speed > 1f;
+                if (accelerated && truck.Speed < 0.01f)
+                {
+                    break;
+                }
+            }
+
+            Assert.IsTrue(accelerated, "바위에 닿기 전에 트럭이 출발하지 못했다");
+            Assert.That(truck.Speed, Is.LessThan(0.01f), "트럭이 월드 바위를 통과했다");
+            Debug.Log($"[CargoStack] 월드 바위 충돌: 진행도 {truck.Progress:0.00}, 속도 {truck.Speed:0.00}m/s");
+            truck.ClearControlInputForTesting();
+        }
+
+        [UnityTest]
         public IEnumerator 장애물을_피하지_않고_직진하면_트럭이_멈춘다()
         {
             yield return SceneManager.LoadSceneAsync("Stage02_SpeedBumps", LoadSceneMode.Single);
