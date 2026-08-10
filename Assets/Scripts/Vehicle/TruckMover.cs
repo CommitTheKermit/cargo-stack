@@ -308,7 +308,7 @@ namespace CargoStack
                     steering * maxSteeringAngle,
                     steeringResponseDegreesPerSecond * deltaTime);
                 float wheelbase = Mathf.Max(0.1f, frontAxleOffset - rearAxleOffset);
-                float signedPlanarSpeed = PlanarSpeedAt(travelled, Speed);
+                float signedPlanarSpeed = Vector3.Dot(planarVelocity, steeringHeading);
                 float yaw = signedPlanarSpeed
                     / wheelbase
                     * Mathf.Tan(steeringAngleDegrees * Mathf.Deg2Rad)
