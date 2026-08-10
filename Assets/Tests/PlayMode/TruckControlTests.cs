@@ -87,6 +87,76 @@ namespace CargoStack.Tests
             truck.ClearControlInputForTesting();
         }
 
+        [UnityTest]
+        public IEnumerator 회전하며_장애물에_부딪혀도_밀려나_후진할_수_있다()
+        {
+            yield return SceneManager.LoadSceneAsync("Prototype", LoadSceneMode.Single);
+
+            GameFlow flow = Object.FindAnyObjectByType<GameFlow>();
+            TruckMover truck = Object.FindAnyObjectByType<TruckMover>();
+            int obstacleLayer = LayerMask.NameToLayer("Obstacle");
+            Assert.NotNull(flow);
+            Assert.NotNull(truck);
+            Assert.That(obstacleLayer, Is.GreaterThanOrEqualTo(0));
+            GameObject.Find("Environment")?.SetActive(false);
+
+            Vector3 heading = truck.transform.right.normalized;
+            Vector3 turnSide = Vector3.Cross(Vector3.up, heading).normalized;
+            GameObject wall = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            wall.name = "TurningCollisionTestWall";
+            wall.layer = obstacleLayer;
+            wall.transform.SetPositionAndRotation(
+                truck.transform.position + heading * 4f + turnSide * 1.8f,
+                truck.transform.rotation);
+            wall.transform.localScale = new Vector3(14f, 4f, 0.5f);
+            Collider wallCollider = wall.GetComponent<Collider>();
+            Physics.SyncTransforms();
+            AssertTruckDoesNotPenetrate(truck, new[] { wallCollider });
+
+            truck.SetControlInputForTesting(1f, 0f, 1f);
+            flow.StartDriving();
+            float collisionTimeout = 5f;
+            bool accelerated = false;
+            while (collisionTimeout > 0f)
+            {
+                yield return new WaitForFixedUpdate();
+                collisionTimeout -= Time.fixedDeltaTime;
+                accelerated |= truck.Speed > 1f;
+                if (accelerated && truck.Speed < 0.01f)
+                {
+                    break;
+                }
+            }
+
+            Assert.IsTrue(accelerated, "장애물에 닿기 전에 트럭이 출발하지 못했다");
+            Assert.That(truck.Speed, Is.LessThan(0.01f), "회전 중 장애물 충돌을 감지하지 못했다");
+            AssertTruckDoesNotPenetrate(truck, new[] { wallCollider });
+
+            Vector3 collisionPosition = truck.transform.position;
+            Vector3 collisionHeading = truck.transform.right.normalized;
+            truck.SetControlInputForTesting(0f, 1f, 0f);
+            float reverseTimeout = 2f;
+            float retreatDistance = 0f;
+            while (reverseTimeout > 0f && retreatDistance > -0.5f)
+            {
+                yield return new WaitForFixedUpdate();
+                reverseTimeout -= Time.fixedDeltaTime;
+                retreatDistance = Vector3.Dot(
+                    truck.transform.position - collisionPosition,
+                    collisionHeading);
+            }
+
+            Assert.That(retreatDistance, Is.LessThanOrEqualTo(-0.5f),
+                "충돌 후 장애물에 끼어 후진하지 못했다");
+            AssertTruckDoesNotPenetrate(truck, new[] { wallCollider });
+            Debug.Log(
+                $"[CargoStack] 회전 충돌 탈출: 후진 {Mathf.Abs(retreatDistance):0.00}m, "
+                + $"남은 시간 {reverseTimeout:0.00}s");
+
+            truck.ClearControlInputForTesting();
+            Object.Destroy(wall);
+        }
+
         private static void AssertTruckDoesNotPenetrate(
             TruckMover truck,
             Collider[] obstacles)
