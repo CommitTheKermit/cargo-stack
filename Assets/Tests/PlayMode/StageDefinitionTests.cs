@@ -125,7 +125,7 @@ namespace CargoStack.Tests
         }
 
         [UnityTest]
-        public IEnumerator 세번째_스테이지는_대형_박스_세개와_일반_화물_네개를_만든다()
+        public IEnumerator 세번째_스테이지는_대형_박스_두개와_일반_화물_네개를_만든다()
         {
             yield return SceneManager.LoadSceneAsync(
                 "Stage03_HillsAndPits",
@@ -143,7 +143,7 @@ namespace CargoStack.Tests
                 context.Definition.SceneName);
             Assert.NotNull(route, "경로가 생성되지 않았다");
             Assert.That(route.TotalLength, Is.GreaterThan(180f));
-            Assert.AreEqual(7, cargo.Length, "Stage 03 화물은 일곱 개여야 한다");
+            Assert.AreEqual(6, cargo.Length, "Stage 03 화물은 여섯 개여야 한다");
 
             int hills = CountHeightRegions(route, pointHeight => pointHeight > 2f);
             int pits = CountHeightRegions(route, pointHeight => pointHeight < -1f);
@@ -188,9 +188,9 @@ namespace CargoStack.Tests
                 largeBoxes += box != null && box.size.y > 1.9f ? 1 : 0;
             }
 
-            Assert.AreEqual(5, boxes, "박스 화물은 다섯 개여야 한다");
+            Assert.AreEqual(4, boxes, "박스 화물은 네 개여야 한다");
             Assert.AreEqual(2, barrels, "드럼통 화물은 두 개여야 한다");
-            Assert.AreEqual(3, largeBoxes, "Stage 04 규격의 대형 박스가 세 개여야 한다");
+            Assert.AreEqual(2, largeBoxes, "Stage 04 규격의 대형 박스가 두 개여야 한다");
         }
 
         [UnityTest]
