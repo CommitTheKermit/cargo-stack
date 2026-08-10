@@ -6,7 +6,8 @@ namespace CargoStack
 {
     /// <summary>
     /// 이 게임의 핵심 조작. 1인칭으로 화물을 직접 집어 짐칸에 쌓는다.
-    /// E 로 집고 놓으며, 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 를 누르는 동안 반시계 방향으로 돌린다.
+    /// E 로 집고 놓으며, 화물을 든 채 E 를 길게 누르면 카메라 정면으로 던진다.
+    /// 드는 동안 조준한 수평면에 반투명 미리보기가 나타나고 Q 를 누르는 동안 반시계 방향으로 돌린다.
     ///
     /// 원본: nan2026-cargo(NAN 2026 사전과제)의 Assets/Spike/Runtime/PlayerCargoInteractor.cs.
     /// 네임스페이스와 화물 타입(CargoItem → Cargo)만 바꿔 가져왔다.
@@ -24,6 +25,10 @@ namespace CargoStack
         [SerializeField] private float minimumPlacementNormalY = 0.55f;
         [SerializeField] private float placementSurfaceGap = 0.01f;
         [SerializeField, Min(0f)] private float previewRotationDegreesPerSecond = 90f;
+        [SerializeField, Min(0f)] private float minimumChargedThrowSpeed = 10f;
+        [SerializeField, Min(0f)] private float maximumChargedThrowSpeed = 24f;
+        [SerializeField, Min(0f)] private float throwHoldThresholdSeconds = 0.25f;
+        [SerializeField, Min(0.01f)] private float maximumThrowChargeSeconds = 1f;
         [SerializeField] private Color placementPreviewColor = new Color(0.25f, 1f, 0.45f, 0.38f);
 
         private readonly Dictionary<Collider, bool> heldColliderStates = new Dictionary<Collider, bool>();
@@ -38,12 +43,17 @@ namespace CargoStack
         private CollisionDetectionMode originalCollisionMode;
         private bool hasValidPlacement;
         private float previewYaw;
+        private float throwChargeStartedAt = -1f;
         private Vector3 previewCargoPosition;
         private Quaternion previewCargoRotation;
 
         public bool HasCargo => heldBody != null;
         public Cargo HeldCargo => heldBody == null ? null : heldBody.GetComponent<Cargo>();
         public bool HasValidPlacement => heldBody != null && hasValidPlacement;
+        public bool IsChargingThrow => heldBody != null && throwChargeStartedAt >= 0f;
+        public float ThrowCharge01 => IsChargingThrow
+            ? Mathf.Clamp01((Time.time - throwChargeStartedAt) / maximumThrowChargeSeconds)
+            : 0f;
         public Vector3 PreviewPosition => previewCargoPosition;
         public Quaternion PreviewRotation => previewCargoRotation;
 
@@ -192,6 +202,36 @@ namespace CargoStack
             ReleaseHeldCargo(heldBody.position, heldBody.rotation, playerController.Body.linearVelocity);
         }
 
+        public bool TryThrowHeldCargo(float chargeSeconds)
+        {
+            if (heldBody == null || viewCamera == null)
+            {
+                return false;
+            }
+
+            float charge = Mathf.InverseLerp(
+                throwHoldThresholdSeconds,
+                maximumThrowChargeSeconds,
+                chargeSeconds);
+            float throwSpeed = Mathf.Lerp(
+                minimumChargedThrowSpeed,
+                maximumChargedThrowSpeed,
+                charge);
+            Vector3 inheritedVelocity = GetComponent<PlayerController>().Body.linearVelocity;
+            ReleaseHeldCargo(
+                heldBody.position,
+                heldBody.rotation,
+                inheritedVelocity + viewCamera.transform.forward * throwSpeed);
+            return true;
+        }
+
+        public bool TryReleaseHeldCargo(float holdSeconds)
+        {
+            return holdSeconds >= throwHoldThresholdSeconds
+                ? TryThrowHeldCargo(holdSeconds)
+                : TryPlaceHeldCargo();
+        }
+
         private void Awake()
         {
             EnsureInitialized();
@@ -207,7 +247,7 @@ namespace CargoStack
                 }
                 else
                 {
-                    TryPlaceHeldCargo();
+                    throwChargeStartedAt = Time.time;
                 }
             }
 
@@ -215,6 +255,50 @@ namespace CargoStack
             {
                 RotatePlacementPreview(Time.deltaTime);
             }
+
+            if (throwChargeStartedAt >= 0f && Input.GetKeyUp(KeyCode.E))
+            {
+                float chargeSeconds = Time.time - throwChargeStartedAt;
+                throwChargeStartedAt = -1f;
+                TryReleaseHeldCargo(chargeSeconds);
+            }
+        }
+
+        private void OnGUI()
+        {
+            if (!IsChargingThrow || !Application.isPlaying)
+            {
+                return;
+            }
+
+            const int SegmentCount = 48;
+            const float Radius = 31f;
+            const float SegmentWidth = 3.5f;
+            const float SegmentHeight = 5f;
+            Vector2 center = new Vector2(Screen.width * 0.5f, Screen.height * 0.5f);
+            var segment = new Rect(
+                center.x - SegmentWidth * 0.5f,
+                center.y - Radius - SegmentHeight * 0.5f,
+                SegmentWidth,
+                SegmentHeight);
+            int chargedSegments = Mathf.CeilToInt(ThrowCharge01 * SegmentCount);
+            Color previousColor = GUI.color;
+            int previousDepth = GUI.depth;
+            GUI.depth = -5;
+
+            for (int index = 0; index < SegmentCount; index++)
+            {
+                Matrix4x4 previousMatrix = GUI.matrix;
+                GUIUtility.RotateAroundPivot(index * (360f / SegmentCount), center);
+                GUI.color = index < chargedSegments
+                    ? new Color(1f, 0.72f, 0.16f, 0.95f)
+                    : new Color(0f, 0f, 0f, 0.42f);
+                GUI.DrawTexture(segment, Texture2D.whiteTexture);
+                GUI.matrix = previousMatrix;
+            }
+
+            GUI.color = previousColor;
+            GUI.depth = previousDepth;
         }
 
         private void LateUpdate()
@@ -254,6 +338,7 @@ namespace CargoStack
             heldColliderCenter = Vector3.zero;
             heldColliderHalfSize = Vector3.zero;
             hasValidPlacement = false;
+            throwChargeStartedAt = -1f;
             DestroyPlacementPreview();
             RestoreHeldCargoCollisions();
             IgnorePlayerCollisions(body, false);

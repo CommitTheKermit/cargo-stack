@@ -60,6 +60,9 @@ namespace CargoStack
         [Tooltip("바퀴 아래 도로 콜라이더를 찾는 레이어.")]
         [SerializeField] private LayerMask groundMask;
 
+        [Tooltip("차량 진행을 막는 도로 장애물 레이어.")]
+        [SerializeField] private LayerMask obstacleMask;
+
         [Tooltip("PhysicsMaterial 마찰을 타이어 횡접지력으로 환산하는 배율.")]
         [SerializeField, Min(0f)] private float tireFrictionMultiplier = 6.2f;
 
@@ -78,6 +81,9 @@ namespace CargoStack
 
         [Tooltip("도로 표면에서 차체 원점까지의 높이.")]
         [SerializeField] private float rideHeight = 0.75f;
+
+        [SerializeField] private Vector3 obstacleCollisionCenter = new(0f, 0.65f, 0f);
+        [SerializeField] private Vector3 obstacleCollisionHalfExtents = new(3.1f, 1.3f, 1.25f);
 
         private Rigidbody body;
         private TruckWheelAnimator wheelAnimator;
@@ -197,6 +203,8 @@ namespace CargoStack
             }
 
             float deltaTime = Time.fixedDeltaTime;
+            Vector3 previousPlanarPosition = planarPosition;
+            float previousTravelled = travelled;
 
             Vector3 routePosition = path.PositionAt(travelled);
             Vector3 pathHeading = PathHeadingAt(travelled);
@@ -274,6 +282,22 @@ namespace CargoStack
                 DriftRollDegrees,
                 out Vector3 position,
                 out Quaternion rotation);
+
+            if (!autopilotForTesting && ObstacleBlocksMove(position, rotation))
+            {
+                planarPosition = previousPlanarPosition;
+                travelled = previousTravelled;
+                Speed = 0f;
+                planarVelocity = Vector3.zero;
+                routePosition = path.PositionAt(travelled);
+                GetPoseAt(
+                    routePosition,
+                    steeringHeading,
+                    DriftRollDegrees,
+                    out position,
+                    out rotation);
+            }
+
             body.MovePosition(position);
             body.MoveRotation(rotation);
 
@@ -281,6 +305,22 @@ namespace CargoStack
             {
                 Arrived?.Invoke();
             }
+        }
+
+        private bool ObstacleBlocksMove(Vector3 nextPosition, Quaternion nextRotation)
+        {
+            if (obstacleMask.value == 0)
+            {
+                return false;
+            }
+
+            Vector3 center = nextPosition + nextRotation * obstacleCollisionCenter;
+            return Physics.CheckBox(
+                center,
+                obstacleCollisionHalfExtents,
+                nextRotation,
+                obstacleMask,
+                QueryTriggerInteraction.Collide);
         }
 
         private float EvaluateAutopilotSpeed()
