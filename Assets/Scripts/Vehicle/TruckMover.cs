@@ -89,6 +89,8 @@ namespace CargoStack
         [SerializeField] private Vector3 obstacleCollisionHalfExtents = new(3.1f, 1.3f, 1.25f);
 
         private Rigidbody body;
+        private Collider[] truckColliders;
+        private readonly Collider[] obstacleBuffer = new Collider[32];
         private TruckWheelAnimator wheelAnimator;
         private float travelled;
         private bool isDriving;
@@ -135,6 +137,7 @@ namespace CargoStack
         private void Awake()
         {
             body = GetComponent<Rigidbody>();
+            truckColliders = GetComponentsInChildren<Collider>(true);
             wheelAnimator = GetComponent<TruckWheelAnimator>();
             body.isKinematic = true;
             body.interpolation = RigidbodyInterpolation.Interpolate;
@@ -318,12 +321,45 @@ namespace CargoStack
             }
 
             Vector3 center = nextPosition + nextRotation * obstacleCollisionCenter;
-            return Physics.CheckBox(
+            int obstacleCount = Physics.OverlapBoxNonAlloc(
                 center,
                 obstacleCollisionHalfExtents,
+                obstacleBuffer,
                 nextRotation,
                 obstacleMask,
-                QueryTriggerInteraction.Collide);
+                QueryTriggerInteraction.Ignore);
+
+            Quaternion rootRotationOffset = nextRotation * Quaternion.Inverse(transform.rotation);
+            for (int obstacleIndex = 0; obstacleIndex < obstacleCount; obstacleIndex++)
+            {
+                Collider obstacle = obstacleBuffer[obstacleIndex];
+                for (int truckIndex = 0; truckIndex < truckColliders.Length; truckIndex++)
+                {
+                    Collider truckCollider = truckColliders[truckIndex];
+                    if (!truckCollider.enabled || truckCollider.isTrigger)
+                    {
+                        continue;
+                    }
+
+                    Vector3 colliderPosition = nextPosition
+                        + rootRotationOffset * (truckCollider.transform.position - transform.position);
+                    Quaternion colliderRotation = rootRotationOffset * truckCollider.transform.rotation;
+                    if (Physics.ComputePenetration(
+                        truckCollider,
+                        colliderPosition,
+                        colliderRotation,
+                        obstacle,
+                        obstacle.transform.position,
+                        obstacle.transform.rotation,
+                        out _,
+                        out _))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         private float EvaluateAutopilotSpeed()

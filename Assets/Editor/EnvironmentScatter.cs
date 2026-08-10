@@ -605,7 +605,7 @@ namespace CargoStack.EditorTools
             return GetRendererBounds(instance).size;
         }
 
-        private static void AddMeshColliders(GameObject instance)
+        internal static void AddMeshColliders(GameObject instance)
         {
             int obstacleLayer = LayerMask.NameToLayer("Obstacle");
             if (obstacleLayer < 0)

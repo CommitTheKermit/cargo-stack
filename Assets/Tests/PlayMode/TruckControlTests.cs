@@ -45,6 +45,7 @@ namespace CargoStack.Tests
 
             Assert.IsTrue(accelerated, "바위에 닿기 전에 트럭이 출발하지 못했다");
             Assert.That(truck.Speed, Is.LessThan(0.01f), "트럭이 월드 바위를 통과했다");
+            AssertTruckDoesNotPenetrate(truck, new[] { rockCollider });
             Debug.Log($"[CargoStack] 월드 바위 충돌: 진행도 {truck.Progress:0.00}, 속도 {truck.Speed:0.00}m/s");
             truck.ClearControlInputForTesting();
         }
@@ -79,8 +80,39 @@ namespace CargoStack.Tests
             Assert.IsTrue(accelerated, "장애물에 닿기 전에 트럭이 출발하지 못했다");
             Assert.That(truck.Speed, Is.LessThan(0.01f), "직진한 트럭이 장애물을 통과했다");
             Assert.That(truck.Progress, Is.LessThan(0.9f), "도착 직전까지 장애물을 만나지 못했다");
+            AssertTruckDoesNotPenetrate(
+                truck,
+                obstacles.GetComponentsInChildren<MeshCollider>(true));
             Debug.Log($"[CargoStack] 직진 장애물 충돌: 진행도 {truck.Progress:0.00}, 속도 {truck.Speed:0.00}m/s");
             truck.ClearControlInputForTesting();
+        }
+
+        private static void AssertTruckDoesNotPenetrate(
+            TruckMover truck,
+            Collider[] obstacles)
+        {
+            foreach (Collider truckCollider in truck.GetComponentsInChildren<Collider>(true))
+            {
+                if (!truckCollider.enabled || truckCollider.isTrigger)
+                {
+                    continue;
+                }
+
+                foreach (Collider obstacle in obstacles)
+                {
+                    bool overlaps = Physics.ComputePenetration(
+                        truckCollider,
+                        truckCollider.transform.position,
+                        truckCollider.transform.rotation,
+                        obstacle,
+                        obstacle.transform.position,
+                        obstacle.transform.rotation,
+                        out _,
+                        out _);
+                    Assert.IsFalse(overlaps,
+                        $"{truckCollider.name}가 {obstacle.name} 안에 들어갔다");
+                }
+            }
         }
 
         [UnityTest]

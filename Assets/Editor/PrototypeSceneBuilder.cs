@@ -253,6 +253,7 @@ namespace CargoStack.EditorTools
             AssetDatabase.Refresh();
 
             int groundLayer = EnsureLayer("Ground");
+            int cargoLayer = EnsureLayer("Cargo");
             int obstacleLayer = EnsureLayer("Obstacle");
 
             bool isWinter = definition.Theme == StageTheme.Winter;
@@ -364,6 +365,7 @@ namespace CargoStack.EditorTools
                 truck.transform,
                 cargoPhysics,
                 slipperyCargoPhysics,
+                cargoLayer,
                 definition.Cargo,
                 LoadPrototypeImpactClips());
 
@@ -501,13 +503,7 @@ namespace CargoStack.EditorTools
                     bounds.center.z);
                 bounds = LocalRendererBounds(obstacle.transform);
 
-                BoxCollider collider = obstacle.AddComponent<BoxCollider>();
-                collider.isTrigger = true;
-                collider.center = bounds.center;
-                collider.size = new Vector3(
-                    Mathf.Max(bounds.size.x, 0.6f),
-                    Mathf.Max(bounds.size.y, 0.8f),
-                    Mathf.Max(bounds.size.z, 0.6f));
+                EnvironmentScatter.AddMeshColliders(visual);
             }
 
             Debug.Log(
@@ -528,16 +524,17 @@ namespace CargoStack.EditorTools
                 Vector3.zero);
             foreach (Renderer renderer in renderers)
             {
-                Bounds world = renderer.bounds;
+                Bounds local = renderer.localBounds;
+                Matrix4x4 toRoot = root.worldToLocalMatrix * renderer.transform.localToWorldMatrix;
                 for (int x = -1; x <= 1; x += 2)
                 {
                     for (int y = -1; y <= 1; y += 2)
                     {
                         for (int z = -1; z <= 1; z += 2)
                         {
-                            bounds.Encapsulate(root.InverseTransformPoint(
-                                world.center + Vector3.Scale(
-                                    world.extents,
+                            bounds.Encapsulate(toRoot.MultiplyPoint3x4(
+                                local.center + Vector3.Scale(
+                                    local.extents,
                                     new Vector3(x, y, z))));
                         }
                     }
@@ -1294,6 +1291,7 @@ namespace CargoStack.EditorTools
             Transform truck,
             PhysicsMaterial standardPhysics,
             PhysicsMaterial slipperyPhysics,
+            int cargoLayer,
             IReadOnlyList<StageCargoDefinition> definitions,
             AudioClip[] impactClips)
         {
@@ -1306,6 +1304,7 @@ namespace CargoStack.EditorTools
             {
                 StageCargoDefinition definition = definitions[index];
                 var item = new GameObject($"Cargo_{index + 1:00}");
+                item.layer = cargoLayer;
                 item.transform.SetParent(cargoRoot, false);
                 Vector3 proxySize = AddImportedCargoVisual(item.transform, definition);
 
