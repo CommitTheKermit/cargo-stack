@@ -22,9 +22,9 @@ jobs:
       - name: Download WebGL build
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh release download webgl-main-f892ee0 --repo "$GITHUB_REPOSITORY" --pattern webgl.tar.gz
+        run: gh release download webgl-main-f892ee0 --repo "$GITHUB_REPOSITORY" --pattern cargo-stack-webgl-f892ee0.tar.gz
       - name: Extract
-        run: mkdir _site && tar -xzf webgl.tar.gz -C _site
+        run: mkdir _site && tar -xzf cargo-stack-webgl-f892ee0.tar.gz -C _site
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
